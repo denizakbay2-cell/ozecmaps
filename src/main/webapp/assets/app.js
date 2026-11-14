@@ -4,6 +4,7 @@
 // Every piece of data from the server is inserted as text through el(), never as HTML.
 
 const MODES = { car: 'Araç', bicycle: 'Bisiklet', foot: 'Yürüyüş' };
+const TRAVEL_BY = { car: 'araçla', bicycle: 'bisikletle', foot: 'yürüyerek' };
 const INCIDENT_COLORS = { ACCIDENT: '#dc2626', ROADWORK: '#ea580c', CONGESTION: '#d97706', CLOSURE: '#7c3aed' };
 const FIELDS = {
     from: 'Başlangıç', to: 'Varış', mode: 'Ulaşım şekli', type: 'Olay türü',
@@ -171,6 +172,7 @@ const ICONS = {
     road: [['path', { d: 'M6 21 9 3M18 21 15 3M12 5v2M12 11v2M12 17v2' }]],
     school: [['path', { d: 'M2.5 9.5 12 5l9.5 4.5L12 14Z' }], ['path', { d: 'M6.5 11.5V16c3.5 2.5 7.5 2.5 11 0v-4.5M21.5 9.5V15' }]],
     expand: [['path', { d: 'm6 15 6-6 6 6' }]],
+    share: [['path', { d: 'M12 15V3.5M7.5 8 12 3.5 16.5 8M5 12.5V20h14v-7.5' }]],
     star: [['path', { d: 'M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9Z' }]],
     home: [['path', { d: 'M4 11.5 12 4.5l8 7V20h-5.5v-5.5h-5V20H4Z' }]],
     briefcase: [['rect', { x: 3, y: 7, width: 18, height: 13, rx: 2 }],
@@ -1697,6 +1699,41 @@ async function refreshAfterIncidentChange() {
     if (state.route && !state.nav) await planRoute();
 }
 
+/* ---------- sharing the arrival time ---------- */
+
+/**
+ * Shares where the trip goes and when it arrives, with a link that opens the destination in the app. The link names
+ * only the destination: the traveller's own position is not shared.
+ */
+async function shareArrival() {
+    const route = state.route;
+    if (!route || !state.to) return;
+    const nav = state.nav;
+    const seconds = nav?.remainingSeconds ?? route.durationSeconds;
+    const start = nav ? Date.now() : (route.departAt ? Date.parse(route.departAt) : Date.now());
+    const arrival = clockFormat.format(new Date(start + seconds * 1000));
+    const place = state.to.label ?? 'hedef';
+    const text = nav
+        ? `Yoldayım: ${place}. Tahmini varış ${arrival} (${formatDuration(seconds)} kaldı).`
+        : `${place}: tahmini varış ${arrival} (${TRAVEL_BY[route.mode]} ${formatDuration(seconds)}).`;
+    const url = `${location.origin}${location.pathname}#to=${coordinate(state.to)}&mode=${route.mode}`;
+    if (navigator.share) {
+        try {
+            await navigator.share({ title: 'ozecmaps', text, url });
+            return;
+        } catch (error) {
+            // closing the share sheet is no failure; anything else falls back to copying
+            if (error.name === 'AbortError') return;
+        }
+    }
+    try {
+        await navigator.clipboard.writeText(`${text} ${url}`);
+        toast('Varış bilgisi kopyalandı; mesajınıza yapıştırın');
+    } catch {
+        window.prompt('Varış bilgisini kopyalayın:', `${text} ${url}`);
+    }
+}
+
 /* ---------- turn-by-turn navigation ---------- */
 
 function prepareTrack(route) {
@@ -1925,6 +1962,7 @@ function updateNavigation(nav, position, along) {
             : `${then.text}${then.street ? ` · ${then.street}` : ''}`;
     }
     const seconds = track.route.durationSeconds * (remaining / Math.max(1, track.total));
+    nav.remainingSeconds = seconds;
     $('#nav-time').textContent = formatDuration(seconds);
     $('#nav-meta').textContent = `${formatDistance(remaining)} · varış ${arrivalTime(seconds)}`;
     $('#nav-progress').style.width = `${Math.min(100, (along / Math.max(1, track.total)) * 100).toFixed(1)}%`;
@@ -2316,6 +2354,8 @@ function wireUp() {
     $('#start-navigation').addEventListener('click', startNavigation);
     $('#nav-stop').addEventListener('click', () => stopNavigation());
     $('#nav-recenter').addEventListener('click', startFollowing);
+    $('#share-arrival').addEventListener('click', shareArrival);
+    $('#nav-share').addEventListener('click', shareArrival);
     $('#nav-simulate').addEventListener('click', () => {
         if (state.nav?.simulation) pauseSimulation();
         else startSimulation();
