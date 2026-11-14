@@ -167,9 +167,13 @@
             <span class="route-switch-action">Seç</span>
         </button>
         <ul id="route-warnings" class="warnings"></ul>
-        <button id="start-navigation" class="button primary wide large" type="button">
-            <span data-icon="navigate"></span>Navigasyonu başlat
-        </button>
+        <div class="result-actions">
+            <button id="start-navigation" class="button primary wide large" type="button">
+                <span data-icon="navigate"></span>Navigasyonu başlat
+            </button>
+            <button id="share-arrival" class="icon-button share-button" type="button" data-icon="share"
+                    title="Varış saatini paylaş" aria-label="Varış saatini paylaş"></button>
+        </div>
         <div class="section-head">
             <h2>Yol tarifi</h2>
             <span id="steps-count" class="muted small"></span>
@@ -232,6 +236,8 @@
             <span id="nav-meta"></span>
             <span id="nav-source" class="nav-source"></span>
         </div>
+        <button id="nav-share" class="icon-button round" type="button" data-icon="share"
+                title="Varış saatini paylaş" aria-label="Varış saatini paylaş"></button>
         <button id="nav-voice" class="icon-button round" type="button" aria-pressed="true" data-icon="volume"
                 title="Sesli yönlendirme" aria-label="Sesli yönlendirme"></button>
         <button id="nav-simulate" class="button small" type="button" title="Rotayı sizin yerinize sürer">

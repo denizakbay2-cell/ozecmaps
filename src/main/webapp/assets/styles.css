@@ -238,6 +238,27 @@ svg.icon {
     font-size: 1rem;
 }
 
+/* the start button and, beside it, sharing the arrival time */
+.result-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.result-actions .button.primary {
+    flex: 1;
+}
+
+.share-button {
+    width: 52px;
+    height: 52px;
+    border-radius: 14px;
+}
+
+.share-button .icon {
+    width: 22px;
+    height: 22px;
+}
+
 .button.wide {
     width: 100%;
 }
