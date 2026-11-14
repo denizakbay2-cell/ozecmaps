@@ -77,6 +77,20 @@ const ENGINE_LABELS = {
 };
 /** At most this many stops between the start and the destination (as on the server). */
 const MAX_STOPS = 3;
+/**
+ * What can be looked for along a route: its chip, what "nothing found" calls it, the icon and colour of its markers,
+ * and who looks for it.
+ */
+const ALONG_NEEDS = {
+    fuel: { label: 'Benzinlik', noun: 'benzinlik', icon: 'fuel', color: '#7c3aed', modes: ['car'] },
+    charging: { label: 'Şarj', noun: 'şarj istasyonu', icon: 'bolt', color: '#0891b2', modes: ['car'] },
+    pharmacy: { label: 'Eczane', noun: 'eczane', icon: 'health', color: '#dc2626', modes: ['car', 'bicycle', 'foot'] },
+    market: { label: 'Market', noun: 'market', icon: 'basket', color: '#16a34a', modes: ['car', 'bicycle', 'foot'] },
+    money: { label: 'ATM / Banka', noun: 'ATM ya da banka', icon: 'money', color: '#0f766e',
+        modes: ['car', 'bicycle', 'foot'] }
+};
+/** The route goes to the search along it in a link, with at most this many points; longer routes are simplified. */
+const ALONG_MAX_POINTS = 300;
 /** The other routes are drawn faded under the chosen one: casing, core and the casing under the pointer. */
 const ALTERNATIVE_STYLE = {
     light: { casing: '#a3a9b3', core: '#e3f5b4', hover: '#6b7280' },
@@ -105,6 +119,8 @@ const state = {
     /** The chosen route; routes holds it with the other offered ones, the fastest first. */
     route: null,
     routes: [],
+    /** The kind of place looked for along the route (the chip that is on), or null. */
+    alongNeed: null,
     incidents: [],
     picking: false,
     nav: null
@@ -180,6 +196,7 @@ const ICONS = {
     expand: [['path', { d: 'm6 15 6-6 6 6' }]],
     share: [['path', { d: 'M12 15V3.5M7.5 8 12 3.5 16.5 8M5 12.5V20h14v-7.5' }]],
     plus: [['path', { d: 'M12 5v14M5 12h14' }]],
+    bolt: [['path', { d: 'M13 3 5 14h6l-1 7 8-11h-6Z' }]],
     star: [['path', { d: 'M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9Z' }]],
     home: [['path', { d: 'M4 11.5 12 4.5l8 7V20h-5.5v-5.5h-5V20H4Z' }]],
     briefcase: [['rect', { x: 3, y: 7, width: 18, height: 13, rx: 2 }],
@@ -401,6 +418,7 @@ function setUpMap() {
     layers.incidents = L.layerGroup().addTo(map);
     layers.route = L.layerGroup().addTo(map);
     layers.businesses = L.layerGroup().addTo(map);
+    layers.along = L.layerGroup().addTo(map);
     layers.preview = L.layerGroup().addTo(map);
     layers.here = L.layerGroup().addTo(map);
     layers.markers = L.layerGroup().addTo(map);
@@ -1398,6 +1416,7 @@ function clearRoute() {
     state.route = null;
     state.routes = [];
     layers.route?.clearLayers();
+    searchAlong();
     $('#result').hidden = true;
     $('#home').hidden = false;
 }
@@ -1445,6 +1464,7 @@ function showRoute(route, { scroll = true } = {}) {
     el('span', { class: 'step-distance' }, step.distanceMeters > 0 ? formatDistance(step.distanceMeters) : ''))));
 
     $('#route-stats').textContent = routeStats(route);
+    searchAlong();
     if (scroll && phoneLayout.matches && !state.nav) {
         // on a phone the sheet scrolls to the summary and the start button
         const panel = $('#panel');
@@ -1504,6 +1524,235 @@ function focusStep(step) {
         radius: 9, color: '#2563eb', weight: 3, fillColor: '#ffffff', fillOpacity: 1
     }).addTo(layers.route);
     map.setView([step.lat, step.lon], 17);
+}
+
+/* ---------- places along the route ---------- */
+
+let alongRequest = 0;
+
+/** The chips for what can be looked for, those that suit the route's way of travelling. */
+function renderAlongChips(route) {
+    $('#along-chips').replaceChildren(...Object.entries(ALONG_NEEDS)
+        .filter(([, need]) => need.modes.includes(route.mode))
+        .map(([key, need]) => el('button', {
+            class: 'quick-chip along-chip',
+            type: 'button',
+            'aria-pressed': String(state.alongNeed === key),
+            onclick: () => {
+                state.alongNeed = state.alongNeed === key ? null : key;
+                searchAlong();
+            }
+        }, el('span', { class: 'chip-icon', style: `background:${need.color}` }, icon(need.icon)), need.label)));
+}
+
+/**
+ * Looks for the kind of place whose chip is on along the chosen route, or clears the search when no chip is on or
+ * there is no route. The route goes along as an encoded polyline, simplified to fit in a link.
+ */
+async function searchAlong() {
+    const route = state.nav ? null : state.route;
+    if (route && state.alongNeed && !ALONG_NEEDS[state.alongNeed].modes.includes(route.mode)) state.alongNeed = null;
+    const need = route ? state.alongNeed : null;
+    const requestId = ++alongRequest;
+    layers.along?.clearLayers();
+    const list = $('#along-list');
+    list.hidden = true;
+    list.replaceChildren();
+    $('#along-status').textContent = '';
+    if (route) renderAlongChips(route);
+    if (!need) return;
+    $('#along-status').textContent = 'Aranıyor…';
+    try {
+        const line = encodePolyline(simplifyLine(route.geometry, ALONG_MAX_POINTS));
+        const places = await api.get(`places/along?need=${need}&mode=${route.mode}`
+            + `&line=${encodeURIComponent(line)}`);
+        if (requestId !== alongRequest) return;
+        showAlong(places, need, route);
+    } catch (error) {
+        if (requestId !== alongRequest) return;
+        $('#along-status').textContent = '';
+        toast(error.message, true);
+    }
+}
+
+function showAlong(places, need, route) {
+    const style = ALONG_NEEDS[need];
+    const list = $('#along-list');
+    list.hidden = false;
+    $('#along-status').textContent = places.length ? `${places.length} yer` : '';
+    if (!places.length) {
+        list.replaceChildren(el('li', { class: 'along-empty' }, `Rotanın yakınında ${style.noun} bulunamadı`));
+        return;
+    }
+    const markers = places.map((place) => L.marker([place.lat, place.lon], {
+        title: place.name,
+        keyboard: false,
+        icon: L.divIcon({
+            className: '',
+            html: el('div', { class: 'marker-business marker-along', style: `background:${style.color}` },
+                icon(style.icon)),
+            iconSize: [28, 28],
+            iconAnchor: [14, 14]
+        })
+    }).bindPopup(() => alongPopup(place, route)).addTo(layers.along));
+    const full = state.stops.length >= MAX_STOPS;
+    list.replaceChildren(...places.map((place, index) => el('li', {
+        tabindex: '0',
+        role: 'button',
+        onclick: () => focusAlong(markers[index]),
+        onkeydown: (event) => {
+            if (event.key === 'Enter' && event.target === event.currentTarget) focusAlong(markers[index]);
+        }
+    },
+    el('span', { class: 'place-icon', style: `background:${style.color}` }, icon(style.icon)),
+    el('span', { class: 'place-text' }, el('strong', {}, place.name),
+        el('span', {}, alongDescription(place, route.mode))),
+    el('button', {
+        class: 'button small along-add',
+        type: 'button',
+        disabled: full,
+        title: full ? `En fazla ${MAX_STOPS} ara durak eklenebilir` : 'Rotaya ara durak olarak ekle',
+        'aria-label': `${place.name}: ara durak olarak ekle`,
+        onclick: (event) => {
+            event.stopPropagation();
+            stopOnTheWay(place);
+        }
+    }, icon('plus'), 'Durak'))));
+}
+
+/** "2,4 km sonra · sağda, yoldan 40 m · Bağdat Caddesi"; which side only matters to drivers. */
+function alongDescription(place, mode) {
+    const side = mode === 'car' ? (place.side === 'RIGHT' ? 'sağda' : 'solda') : null;
+    const off = place.offsetMeters >= 30 ? `yoldan ${formatDistance(place.offsetMeters)}` : null;
+    return [place.alongMeters < 50 ? 'başlangıçta' : `${formatDistance(place.alongMeters)} sonra`,
+        [side, off].filter(Boolean).join(', '), place.detail].filter(Boolean).join(' · ');
+}
+
+function alongPopup(place, route) {
+    const full = state.stops.length >= MAX_STOPS;
+    return el('div', { class: 'popup' },
+        el('div', { class: 'popup-title' }, place.name),
+        el('div', { class: 'muted small' }, place.kind),
+        el('div', { class: 'small' }, alongDescription(place, route.mode)),
+        el('div', { class: 'popup-actions' },
+            el('button', {
+                class: 'button small primary',
+                type: 'button',
+                disabled: full,
+                title: full ? `En fazla ${MAX_STOPS} ara durak eklenebilir` : null,
+                onclick: () => {
+                    map.closePopup();
+                    stopOnTheWay(place);
+                }
+            }, 'Durak ekle'),
+            el('button', { class: 'button small', type: 'button', onclick: () => {
+                map.closePopup();
+                setStop('to', { lat: place.lat, lon: place.lon, label: place.name });
+            } }, 'Buraya git')));
+}
+
+function focusAlong(marker) {
+    map.setView(marker.getLatLng(), Math.max(map.getZoom(), 16));
+    marker.openPopup();
+}
+
+/** Adds a place found along the route as a stop, among the other stops in the order the route reaches them. */
+function stopOnTheWay(place) {
+    if (state.stops.length >= MAX_STOPS) {
+        toast(`En fazla ${MAX_STOPS} ara durak eklenebilir`, true);
+        return;
+    }
+    state.stops.splice(stopIndexAt(place.alongMeters), 0, { lat: place.lat, lon: place.lon, label: place.name });
+    state.alongNeed = null;
+    renderStopFields();
+    drawStops();
+    planRoute();
+    toast(`${place.name} ara durak olarak eklendi`);
+}
+
+/** Where a stop reached this far into the route goes in the list: after the stops the route reaches before it. */
+function stopIndexAt(alongMeters) {
+    const route = state.route;
+    const points = route.geometry.map(([lat, lon]) => ({ lat, lon }));
+    let passed = 0;
+    let meters = 0;
+    let point = 0;
+    for (const step of route.instructions) {
+        if (step.maneuver !== 'WAYPOINT') continue;
+        for (; point < step.pointIndex; point++) meters += distanceMeters(points[point], points[point + 1]);
+        if (meters < alongMeters) passed++;
+    }
+    // after the passed-th stop that has a place; empty stop fields keep their places
+    let index = 0;
+    while (passed > 0 && index < state.stops.length) {
+        if (state.stops[index]) passed--;
+        index++;
+    }
+    return index;
+}
+
+/** The line with as few points as keep it within a tolerance, which doubles until at most maxPoints are left. */
+function simplifyLine(line, maxPoints) {
+    if (line.length <= maxPoints) return line;
+    const points = line.map(([lat, lon]) => ({ lat, lon }));
+    for (let tolerance = 5; ; tolerance *= 2) {
+        const kept = douglasPeucker(points, tolerance);
+        if (kept.length <= maxPoints) return kept.map((index) => line[index]);
+    }
+}
+
+/** Douglas–Peucker: the indexes of the points that keep the line within the tolerance (m). */
+function douglasPeucker(points, tolerance) {
+    const keep = new Uint8Array(points.length);
+    keep[0] = 1;
+    keep[points.length - 1] = 1;
+    const pending = [[0, points.length - 1]];
+    while (pending.length) {
+        const [first, last] = pending.pop();
+        let farthest = -1;
+        let farthestMeters = tolerance;
+        for (let i = first + 1; i < last; i++) {
+            const meters = project(points[i], points[first], points[last]).distance;
+            if (meters > farthestMeters) {
+                farthest = i;
+                farthestMeters = meters;
+            }
+        }
+        if (farthest > 0) {
+            keep[farthest] = 1;
+            pending.push([first, farthest], [farthest, last]);
+        }
+    }
+    const kept = [];
+    keep.forEach((flag, index) => {
+        if (flag) kept.push(index);
+    });
+    return kept;
+}
+
+/** Google's encoded polyline with five decimals: a few characters per point. */
+function encodePolyline(line) {
+    let text = '';
+    let lastLat = 0;
+    let lastLon = 0;
+    for (const [lat, lon] of line) {
+        const y = Math.round(lat * 1e5);
+        const x = Math.round(lon * 1e5);
+        text += encodeNumber(y - lastLat) + encodeNumber(x - lastLon);
+        lastLat = y;
+        lastLon = x;
+    }
+    return text;
+}
+
+function encodeNumber(value) {
+    let rest = value < 0 ? ~(value << 1) : value << 1;
+    let text = '';
+    while (rest >= 0x20) {
+        text += String.fromCharCode((0x20 | (rest & 0x1f)) + 63);
+        rest >>= 5;
+    }
+    return text + String.fromCharCode(rest + 63);
 }
 
 /* ---------- businesses ---------- */
@@ -1898,6 +2147,9 @@ function startNavigation() {
     };
     document.body.classList.add('navigating');
     layers.businesses.clearLayers();
+    // the places along the route were for planning stops; the trip itself needs a clear map
+    state.alongNeed = null;
+    searchAlong();
     $('#nav-banner').hidden = false;
     $('#nav-bar').hidden = false;
     $('#route-switch').hidden = true;

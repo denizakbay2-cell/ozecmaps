@@ -1127,6 +1127,59 @@ svg.icon {
 
 /* ---------- route result ---------- */
 
+/* a fuel station, a pharmacy, a market... along the route, to add as a stop */
+.along {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.along-chip .chip-icon {
+    color: #ffffff;
+}
+
+.along-chip[aria-pressed="true"] {
+    border-color: var(--ink);
+    background: var(--ink);
+    color: #ffffff;
+}
+
+.along-list li .place-text {
+    flex: 1;
+}
+
+/* how far along, which side and the street: worth two lines rather than an ellipsis */
+.along-list li .place-text span {
+    white-space: normal;
+}
+
+.along-list .place-icon {
+    color: #ffffff;
+}
+
+.along-list .along-add {
+    flex: none;
+    gap: 4px;
+    padding: 0 12px 0 8px;
+}
+
+.along-list .along-add .icon {
+    width: 16px;
+    height: 16px;
+}
+
+.along-list .along-empty {
+    min-height: 0;
+    padding: 4px 8px;
+    color: var(--muted);
+    font-size: 0.86rem;
+    cursor: default;
+}
+
+.along-list .along-empty:hover {
+    background: none;
+}
+
 .result {
     display: flex;
     flex-direction: column;
@@ -1790,6 +1843,18 @@ svg.icon {
     width: 13px;
     height: 13px;
     stroke-width: 2.4;
+}
+
+/* a place along the route: larger than the business layer's, with a lime ring */
+.marker-along {
+    width: 28px;
+    height: 28px;
+    box-shadow: 0 0 0 2px var(--lime), 0 3px 8px rgb(0 0 0 / 30%);
+}
+
+.marker-along svg {
+    width: 15px;
+    height: 15px;
 }
 
 /* the device's real position */
@@ -2662,5 +2727,11 @@ svg.icon {
 
     .nav-recenter:hover {
         background: var(--lime-strong);
+    }
+
+    .along-chip[aria-pressed="true"] {
+        border-color: var(--lime);
+        background: var(--lime);
+        color: var(--on-lime);
     }
 }

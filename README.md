@@ -20,6 +20,7 @@ Araç rotalarında İstanbul trafiği İBB'nin açık verisinden hesaba katılı
 - **Ev, İş ve kaydedilen yerler:** Ana ekrandaki Ev ve İş düğmeleri tek dokunuşla oraya rota çizer. Ayarlı değilse dokunup bir yer arayın ya da haritada seçin, o yer kaydedilir. "Nereye" kutusundaki yıldızla hedef Ev, İş ya da Kaydedilenler'e eklenir. Kayıtlar bu cihazda (tarayıcıda) tutulur.
 - **Varış saatini paylaşma:** Rota kartındaki ve navigasyon çubuğundaki paylaş düğmesi "Yoldayım: Sarıgül Sokağı. Tahmini varış 21:22 (14 dk kaldı)." mesajını, hedefi açan bir bağlantıyla telefonun paylaşma menüsüne verir; menü yoksa panoya kopyalar. Bağlantıda yalnızca hedef vardır, sizin konumunuz paylaşılmaz.
 - **Ara durak:** "Ara durak ekle" ile başlangıç ve varış arasına en fazla üç durak eklenir; haritaya dokunup "Durak ekle" de denebilir. Rota durak durak hesaplanır, her bacağın trafiği o bacağın başlayacağı saate göredir. Navigasyon durağa yaklaşınca "200 metre sonra ara durağa ulaşacaksınız" der.
+- **Yol üstünde arama:** Rota kartındaki "Yol üstünde" çipleri rotanın yakınındaki benzinlikleri, şarj istasyonlarını, eczaneleri, marketleri ya da ATM ve bankaları listeler: "2,4 km sonra · sağda, yoldan 40 m · Bağdat Caddesi". Sonuçlar haritada da simgeleriyle görünür. "Durak" düğmesi yeri ara durak yapar ve rotadaki sırasına göre öteki durakların arasına yerleştirir. Türkiye'nin her yerinde çalışır; yerler OpenStreetMap'ten çıkarılıp uygulamayla gelir ([ADR-0012](docs/adr/ADR-0012.md)).
 - **Alternatif rota:** En hızlı rotanın altında, ondan belirgin biçimde farklı ikinci bir rota daha soluk çizilir. İki rotanın süresi haritada küçük etiketlerde yazar. Soluk rotanın herhangi bir yerine dokununca o rotaya geçilir; panelde de "Alternatif rota" satırı vardır ([ADR-0010](docs/adr/ADR-0010.md)).
 - **Trafik:**
   - Araç rotaları İstanbul'da o saatin olağan trafiğini hesaba katar. Bu bilgi İBB'nin iki aylık saatlik yoğunluk verisinden, yaklaşık 2.400 bölge için çıkarıldı.
@@ -76,6 +77,8 @@ Durdurmak için `Ctrl+C`. `docker compose down -v` verileri de siler.
 ```bash
 scripts/build-national-graph.sh     # ~650 MB indirir, osmium ve Java ile data/turkey-car.graph üretir (~290 MB)
 ```
+
+Yol üstündeki yerlerin listesi depoyla gelir. Yenilemek için ulusal grafikten sonra `scripts/build-poi-index.sh` çalıştırın; aynı kesiti kullanır.
 
 Betik yalnızca Docker ister. Docker'a en az 4 GB bellek verilmeli; çalışırken 3 GB disk kullanır. `docker compose` dosyayı `data/` klasöründen okur. Uygulama açılışta grafiği yaklaşık 2 saniyede yükler ve toplam 800 MB kadar bellek kullanır. Dosya yoksa uygulama yine çalışır: Kadıköy dışındaki araç rotaları da OSRM'den gelir.
 
@@ -142,6 +145,7 @@ Depodaki [Render Blueprint](render.yaml) dosyası web servisini (Docker, ücrets
 | `GET` | `/api/traffic/roads?minLat=…&minLon=…&maxLat=…&maxLon=…` | Görünümdeki yollar ve şu anki hız katsayıları (1 = serbest akış), en fazla 2.500 yol |
 | `GET` | `/api/places?q=moda&limit=8&lat=…&lon=…` | Yer ve işletme arama; `lat`/`lon` yakındaki sonuçları öne alır. `detail` yerin sokağını ve semtini verir |
 | `GET` | `/api/places/street?lat=…&lon=…` | Bir noktadaki yolun ya da yerin adı |
+| `GET` | `/api/places/along?need=fuel\|charging\|pharmacy\|money\|market&mode=car\|bicycle\|foot&line=…` | Rotanın yakınındaki yerler. `line` rotanın kodlanmış çizgisidir (Google'ın biçimi, beş ondalık). Rotaya yayılmış en fazla 20 yer döner; her birinin rotadaki yeri (`alongMeters`), rotaya uzaklığı (`offsetMeters`) ve rotanın hangi yanında olduğu (`side`) yazar |
 | `GET` | `/api/businesses?minLat=…&minLon=…&maxLat=…&maxLon=…` | Sokak ölçeğindeki bir görünümdeki işletmeler (ayrıntılı bölge) |
 | `POST` `DELETE` | `/api/places`, `/api/places/{id}` | Elle yer ekleme ve silme. OpenStreetMap'ten gelen yerler silinmez |
 | `GET` `POST` | `/api/incidents` | Etkin olaylar / olay bildirme: `type`, `lat`, `lon`, isteğe bağlı `description`, `durationMinutes` |
@@ -183,6 +187,7 @@ tarayıcı (Leaflet) ◀── JSON ── JAX-RS ◀── servisler ──▶ 
   - En iyi rotanın yolları 1,4 kat pahalılaştırılır (`PenaltyWeighting`, bir dekoratör) ve A* yeniden çalışır.
   - Bulunan rota en iyisiyle en fazla %75 ortak olabilir ve en fazla 1,3 kat sürebilir. Fazla benzerse ceza 2,0'a çıkar.
   - Kadıköy'de ek süre birkaç milisaniye, Edirne–Van'da 1,6 saniyedir.
+- **Yol üstünde arama:** Türkiye'deki 74 bin yer türe göre ayrılır ve yaklaşık 2 km'lik ızgara hücrelerinde durur. Arama yalnızca rotanın geçtiği hücrelere bakar ve her yerin rotaya en yakın noktasını bulur. Rota 20 parçaya bölünür, her parçadan yola en yakın yer seçilir. Tarayıcı uzun rotaları göndermeden önce Douglas–Peucker ile en fazla 300 noktaya indirir.
 - **Yanıtlar:** Payara JSON'u ve web dosyalarını gzip'le sıkıştırır (`docker/post-boot.asadmin`). `PacedWriter` büyük yanıtları 64 KB'lık parçalarla yazar.
 - **Ses:**
   - Yol tarifini cihazın kendi sesi okur (tarayıcının Web Speech API'si) ve ücretsizdir. Uygulama cihazdaki en doğal Türkçe sesi seçer: adında "Natural", "Premium", "Enhanced" ya da "Gelişmiş" geçen sesler önce gelir.
@@ -219,8 +224,8 @@ Bellek için alanı bir ilçe ya da küçük bir şehir büyüklüğünde tutun 
 ./mvnw verify
 ```
 
-Toplam 243 test var:
-- rota motoru: geometri, grafik, uzamsal indeks, A*, alternatif rota, trafik, tarif üretimi,
+Toplam 258 test var:
+- rota motoru: geometri, grafik, uzamsal indeks, A*, alternatif rota, trafik, tarif üretimi, yol üstündeki yerler,
 - gerçek Kadıköy verisi üzerinde A* ile Dijkstra karşılaştırması,
 - ulusal grafik: kavşak sıkıştırma, dosya biçimi, aynı yollarda ayrıntılı motorla aynı en kısa mesafeler,
 - trafik profili, İBB endeks istemcisi, çevrimdışı araçlar,
@@ -230,7 +235,7 @@ Toplam 243 test var:
 - HTTP katmanı ve hata eşleme,
 - ArchUnit katman kuralları.
 
-JaCoCo raporu `target/site/jacoco/` altında oluşur. Satır kapsamı yaklaşık %92, rota motorunda %98. Repository sınıfları gerçek veritabanı ister. Onlar için Testcontainers ile sözleşme testleri bir sonraki adım.
+JaCoCo raporu `target/site/jacoco/` altında oluşur. Satır kapsamı yaklaşık %92, rota motorunda %99. Repository sınıfları gerçek veritabanı ister. Onlar için Testcontainers ile sözleşme testleri bir sonraki adım.
 
 ## Bilinen sınırlar
 
@@ -240,6 +245,7 @@ JaCoCo raporu `target/site/jacoco/` altında oluşur. Satır kapsamı yaklaşık
 - Kadıköy dışındaki yürüyüş ve bisiklet rotaları, ulusal grafik yüklenmemişse araç rotaları ve arama açık servislere bağlıdır. Bu rotalarda yol olayları ve trafik hesaba katılmaz, yalnızca "en hızlı" rota vardır. Servisler yavaşsa ya da yanıt vermiyorsa uygulama bunu söyler.
 - Haritada simgesiyle görünen işletmeler yalnızca ayrıntılı bölgedekilerdir. Diğer şehirlerde işletmeler aramayla bulunur; harita karoları da işletme simgelerini gösterir.
 - Toplu taşıma ve vapur rotası yok. Veri yalnızca içe aktarılan alanı kapsar.
+- Yol üstündeki yerler bir OpenStreetMap kesitinin anlık görüntüsüdür. Yeni açılan yerler liste yenilenene kadar görünmez. Nöbetçi eczane ve çalışma saati bilgisi yoktur. Rotaya uzaklık kuş uçuşudur: bölünmüş yolun karşısındaki bir yere dönülemeyebilir, bu yüzden yerin rotanın hangi yanında olduğu yazar.
 - Sesin kalitesi cihaza bağlıdır. Mac'teki Chrome Türkçe için yalnızca macOS'un "Yelda" sesini sunar ve bu ses robotik duyulur. Daha doğal bir ses için Mac'te *Sistem Ayarları › Erişilebilirlik › Seslendirilmiş İçerik* bölümünde Sistem Sesi listesinden *Sesleri Yönet…* deyip Türkçe'de Yelda'nın gelişmiş (Enhanced) sürümü indirilebilir; Safari bu sesi kullanır, Chrome listesinde görünürse uygulama onu kendiliğinden seçer. Edge'in Türkçe "Natural" sesleri ve Android'in Google sesleri de doğaldır.
 - Mac'teki Chrome'un konuşma motoru, konuşma tam başlarken kesilirse Chrome yeniden başlatılana kadar bütün sayfalarda susar. Uygulama bu yüzden hiçbir cümleyi kesmez. Motor yine de yanıt vermezse uygulama bunu ekranda söyler; Chrome'u tamamen kapatıp (Cmd+Q) açmak düzeltir.
 - Konum, tarayıcının konum iznine bağlıdır. Mac'te ayrıca *Sistem Ayarları › Gizlilik ve Güvenlik › Konum Servisleri* bölümünde tarayıcıya izin verilmelidir.
@@ -259,6 +265,7 @@ JaCoCo raporu `target/site/jacoco/` altında oluşur. Satır kapsamı yaklaşık
 - [İstanbul trafiği: İBB'nin saatlik yoğunluk verisi ve canlı trafik endeksi](docs/adr/ADR-0009.md)
 - [Alternatif rota: ceza yöntemi](docs/adr/ADR-0010.md)
 - [Sesli yönlendirme: cihazın kendi sesi](docs/adr/ADR-0011.md)
+- [Yol üstünde arama: uygulamayla gelen yer listesi](docs/adr/ADR-0012.md)
 
 ## Teknolojiler
 
@@ -270,6 +277,7 @@ Java 21, Jakarta EE 11 (JAX-RS, CDI, JPA, JSON-P, Bean Validation, JTA) ve Payar
 - Harita karoları OpenStreetMap'in [karo kullanım politikasına](https://operations.osmfoundation.org/policies/tiles/) uygun olarak, düşük trafikle ve atıfla kullanılır.
 - Türkiye geneli rotalar [FOSSGIS](https://routing.openstreetmap.de/about.html) sunucularındaki OSRM'den, arama ve adresler [Photon](https://photon.komoot.io)'dan (komoot) gelir. İkisi de OpenStreetMap verisi kullanır. Ayrıntılı bölge dışındaki rotaların başlangıç ve varış noktaları ile arama metinleri bu servislere gönderilir. İstekler kullanım koşullarına uygun olarak sınırlanır ve önbelleğe alınır.
 - Ulusal grafik (`data/turkey-car.graph`) Geofabrik'in OpenStreetMap kesitinden üretilir ve ODbL altındadır. Depoya girmez, betikle üretilir.
+- Yol üstündeki yerlerin listesi (`src/main/resources/pois/turkey-pois.csv.gz`) aynı kesitten üretilir ve ODbL altındadır. Başlığında verinin tarihi ve atıf yazar.
 - Trafik verisi [İBB Açık Veri Portalı](https://data.ibb.gov.tr)'ndandır ([İBB Açık Veri Lisansı](https://data.ibb.gov.tr/license)): saatlik trafik yoğunluk veri seti (Ekim–Kasım 2024) ve trafik endeksi. Uygulamayla gelen `src/main/resources/traffic` profili bu veriden üretilmiştir ve kaynağını başlığında belirtir. Endeks isteği kullanıcıya ait hiçbir bilgi taşımaz.
 - Harita altlığı [OpenFreeMap](https://openfreemap.org)'ten gelir (© [OpenMapTiles](https://www.openmaptiles.org/), veri © OpenStreetMap). Anahtar ve kota istemez, atıf ister; atıf haritanın köşesinde durur.
 - Leaflet BSD-2 (`src/main/webapp/assets/vendor/leaflet/LICENSE`), MapLibre GL JS BSD-3 ve maplibre-gl-leaflet ISC lisanslıdır (`src/main/webapp/assets/vendor/maplibre/`). Inter yazı tipi SIL Open Font License 1.1 ile gelir (`src/main/webapp/assets/fonts/OFL.txt`).

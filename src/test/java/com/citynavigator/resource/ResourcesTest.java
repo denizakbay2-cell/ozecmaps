@@ -16,7 +16,9 @@ import com.citynavigator.dto.RouteResponse;
 import com.citynavigator.dto.TrafficStatus;
 import com.citynavigator.routing.GeoPoint;
 import com.citynavigator.routing.Optimization;
+import com.citynavigator.routing.RoadsidePlace;
 import com.citynavigator.routing.TravelMode;
+import com.citynavigator.service.AlongRouteService;
 import com.citynavigator.service.IncidentService;
 import com.citynavigator.service.MapService;
 import com.citynavigator.service.PlaceService;
@@ -42,6 +44,8 @@ class ResourcesTest {
     private RouteService routes;
     @Mock
     private PlaceService places;
+    @Mock
+    private AlongRouteService along;
     @Mock
     private IncidentService incidents;
     @Mock
@@ -114,7 +118,7 @@ class ResourcesTest {
         when(places.search("moda", null, 5)).thenReturn(List.of());
         when(places.add(any())).thenReturn(view);
         when(uriInfo.getAbsolutePathBuilder()).thenReturn(UriBuilder.fromUri("http://localhost/api/places"));
-        PlaceResource resource = new PlaceResource(places);
+        PlaceResource resource = new PlaceResource(places, along);
 
         assertThat(resource.search("moda", 5, 40.98, 29.03)).containsExactly(view);
         assertThat(resource.search("moda", 5, 40.98, null)).isEmpty();
@@ -127,6 +131,8 @@ class ResourcesTest {
         verify(places).streetAt(new GeoPoint(41, 29));
         resource.get(12);
         verify(places).get(12);
+        resource.along("pharmacy", "foot", "_ulyF_oxpD");
+        verify(along).along(RoadsidePlace.Kind.PHARMACY, TravelMode.FOOT, "_ulyF_oxpD");
     }
 
     @Test

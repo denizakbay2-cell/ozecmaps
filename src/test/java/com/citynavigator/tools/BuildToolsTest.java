@@ -3,13 +3,17 @@ package com.citynavigator.tools;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.citynavigator.osm.OplReader;
 import com.citynavigator.routing.CongestionProfile;
 import com.citynavigator.routing.DayTime;
 import com.citynavigator.routing.NationalGraph;
 import com.citynavigator.routing.NationalGraphFile;
+import com.citynavigator.routing.RoadsidePlace.Kind;
+import com.citynavigator.routing.RoadsidePlaces;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.io.StringReader;
 import java.io.StringWriter;
@@ -48,6 +52,62 @@ class BuildToolsTest {
         csv.append("\"2024-10-05 19:00:00\",\"41.064\",\"29.108\",sxk9w7,10,90,30,5\n");
         csv.append("\"2024-10-02 08:00:00\",\"40.99\",\"29.02\",sxk95z,10,90,40,100\n");
         return csv.toString();
+    }
+
+    @Test
+    void keepsThePlacesATravellerStopsAtUnderTheirBestName() {
+        assertThat(BuildPoiIndex.kind(Map.of("amenity", "fuel"))).contains(Kind.FUEL);
+        assertThat(BuildPoiIndex.kind(Map.of("amenity", "charging_station"))).contains(Kind.CHARGING);
+        assertThat(BuildPoiIndex.kind(Map.of("amenity", "atm"))).contains(Kind.MONEY);
+        assertThat(BuildPoiIndex.kind(Map.of("shop", "convenience"))).contains(Kind.MARKET);
+        assertThat(BuildPoiIndex.kind(Map.of("amenity", "cafe", "shop", "bakery"))).isEmpty();
+
+        assertThat(BuildPoiIndex.name(Map.of("name", "Opet", "name:tr", "Opet Kadıköy"), Kind.FUEL))
+                .isEqualTo("Opet Kadıköy");
+        assertThat(BuildPoiIndex.name(Map.of("name", " ", "brand", "Shell;Turkey  Petrol"), Kind.FUEL))
+                .isEqualTo("Shell,Turkey Petrol");
+        assertThat(BuildPoiIndex.name(Map.of("amenity", "atm"), Kind.MONEY)).isEqualTo("ATM");
+        assertThat(BuildPoiIndex.name(Map.of("amenity", "bank"), Kind.MONEY)).isEqualTo("Banka");
+        assertThat(BuildPoiIndex.name(Map.of(), Kind.CHARGING)).isEqualTo("Şarj istasyonu");
+        assertThat(BuildPoiIndex.name(Map.of("name", "x".repeat(100)), Kind.MARKET)).hasSize(80);
+    }
+
+    @Test
+    void writesPointsAndTheMiddleOfOutlinesAsALineEachThatTheApplicationReads() throws IOException {
+        Path opl = folder.resolve("places.opl");
+        Files.writeString(opl, """
+                n1 T x29.0 y41.0
+                n2 T x29.002 y41.0
+                n3 T x29.002 y41.002
+                n4 T x29.0 y41.002
+                n5 Tamenity=pharmacy,name=Moda%20%Eczanesi x29.03 y40.98
+                n6 Thighway=bus_stop x29.04 y40.97
+                w7 Tamenity=fuel,brand=Opet Nn1,n2,n3,n4,n1
+                w8 Tbuilding=yes Nn1,n2,n3
+                w9 Tshop=supermarket Nn404
+                """);
+        BuildPoiIndex.Collector collector = new BuildPoiIndex.Collector();
+        try (BufferedReader reader = Files.newBufferedReader(opl)) {
+            OplReader.read(reader, collector);
+        }
+        StringWriter text = new StringWriter();
+
+        BuildPoiIndex.write(collector.rows(), "2026-11-13T21:22:20Z", new PrintWriter(text));
+
+        assertThat(text.toString().lines()).containsExactly(
+                "# places along routes: KIND;lat;lon;name",
+                "# OpenStreetMap data of 2026-11-13T21:22:20Z, (c) OpenStreetMap contributors, ODbL",
+                "FUEL;41.00100;29.00100;Opet",
+                "PHARMACY;40.98000;29.03000;Moda Eczanesi");
+
+        Path list = folder.resolve("places.csv.gz");
+        BuildPoiIndex.main(new String[] {opl.toString(), list.toString()});
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(
+                new GZIPInputStream(Files.newInputStream(list)), StandardCharsets.UTF_8))) {
+            assertThat(RoadsidePlaces.read(reader).size()).isEqualTo(2);
+        }
+        assertThatThrownBy(() -> BuildPoiIndex.main(new String[] {opl.toString()}))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test

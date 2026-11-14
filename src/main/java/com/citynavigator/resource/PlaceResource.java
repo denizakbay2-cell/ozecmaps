@@ -1,9 +1,13 @@
 package com.citynavigator.resource;
 
+import com.citynavigator.dto.AlongPlaceView;
 import com.citynavigator.dto.PlaceRequest;
 import com.citynavigator.dto.PlaceView;
 import com.citynavigator.dto.StreetView;
 import com.citynavigator.routing.GeoPoint;
+import com.citynavigator.routing.RoadsidePlace;
+import com.citynavigator.routing.TravelMode;
+import com.citynavigator.service.AlongRouteService;
 import com.citynavigator.service.PlaceService;
 import jakarta.enterprise.context.RequestScoped;
 import jakarta.inject.Inject;
@@ -13,6 +17,7 @@ import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.DELETE;
@@ -28,9 +33,11 @@ import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.UriInfo;
 import java.util.List;
+import java.util.Locale;
 
 /**
- * {@code /api/places}: search by name, the street at a point, and places added by an administrator.
+ * {@code /api/places}: search by name, the street at a point, places along a route, and places added by an
+ * administrator.
  */
 @Path("places")
 @RequestScoped
@@ -39,14 +46,16 @@ import java.util.List;
 public class PlaceResource {
 
     private PlaceService places;
+    private AlongRouteService along;
 
     protected PlaceResource() {
         // for the CDI proxy
     }
 
     @Inject
-    public PlaceResource(PlaceService places) {
+    public PlaceResource(PlaceService places, AlongRouteService along) {
         this.places = places;
+        this.along = along;
     }
 
     /**
@@ -72,6 +81,25 @@ public class PlaceResource {
             @QueryParam("lon") @NotNull(message = "gerekli") @DecimalMin(value = "-180", message = "geçersiz boylam")
             @DecimalMax(value = "180", message = "geçersiz boylam") Double lon) {
         return places.streetAt(new GeoPoint(lat, lon));
+    }
+
+    /**
+     * {@code /api/places/along?need=fuel&mode=car&line=...}: fuel or charging stations, pharmacies, banks and ATMs or
+     * markets along a planned route, which the application sends as an encoded polyline. A GET, like planning the
+     * route itself: it changes nothing.
+     */
+    @GET
+    @Path("along")
+    public List<AlongPlaceView> along(
+            @QueryParam("need") @NotNull(message = "gerekli")
+            @Pattern(regexp = "fuel|charging|pharmacy|money|market",
+                    message = "fuel, charging, pharmacy, money ya da market olmalı") String need,
+            @QueryParam("mode") @DefaultValue("car")
+            @Pattern(regexp = "car|bicycle|foot", message = "car, bicycle ya da foot olmalı") String mode,
+            @QueryParam("line") @NotNull(message = "gerekli") @Size(max = 6000, message = "en fazla 6000 karakter")
+            @Pattern(regexp = "[?-~]+", message = "kodlanmış bir çizgi olmalı") String line) {
+        return along.along(RoadsidePlace.Kind.valueOf(need.toUpperCase(Locale.ROOT)),
+                TravelMode.valueOf(mode.toUpperCase(Locale.ROOT)), line);
     }
 
     @GET
