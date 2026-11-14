@@ -1,0 +1,37 @@
+# Render Blueprint: https://render.com/docs/blueprint-spec
+# Dashboard -> New -> Blueprint -> pick this repository. Creates the web service and a PostgreSQL database.
+services:
+  - type: web
+    name: city-navigator
+    runtime: docker
+    plan: free
+    healthCheckPath: /api/ping
+    envVars:
+      # start.sh turns the connection string into DB_URL; credentials come separately
+      - key: DATABASE_URL
+        fromDatabase:
+          name: city-navigator-db
+          property: connectionString
+      - key: DB_USER
+        fromDatabase:
+          name: city-navigator-db
+          property: user
+      - key: DB_PASSWORD
+        fromDatabase:
+          name: city-navigator-db
+          property: password
+      - key: DEMO_DATA
+        value: "true"
+      # the free plan has 512 MB; leave room next to the heap for Payara's own memory
+      - key: MEM_MAX_RAM_PERCENTAGE
+        value: "55.0"
+      # Random secret; copy it from the dashboard (Environment tab) to report incidents from the UI
+      - key: ADMIN_TOKEN
+        generateValue: true
+
+databases:
+  - name: city-navigator-db
+    plan: free
+    databaseName: city_navigator
+    user: navigator
+    postgresMajorVersion: "17"

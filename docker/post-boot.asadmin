@@ -1,0 +1,4 @@
+# Run by Payara Micro after it boots (docker/start.sh passes it with --postbootcommandfile).
+# gzip for JSON and the web client: route geometry shrinks to about a quarter for every client that accepts it.
+set configs.config.server-config.network-config.protocols.protocol.http-listener.http.compression=on
+set configs.config.server-config.network-config.protocols.protocol.http-listener.http.compressable-mime-type=application/json,text/html,text/css,text/javascript,application/javascript,application/manifest+json,image/svg+xml

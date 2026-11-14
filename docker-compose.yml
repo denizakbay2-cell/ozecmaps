@@ -1,0 +1,39 @@
+# Local run: docker compose up --build   ->   http://localhost:8080
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: city_navigator
+      POSTGRES_USER: navigator
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-navigator}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U navigator -d city_navigator"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  app:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DB_URL: jdbc:postgresql://db:5432/city_navigator
+      DB_USER: navigator
+      DB_PASSWORD: ${DB_PASSWORD:-navigator}
+      # Adds three sample incidents in Kadıköy to an empty database
+      DEMO_DATA: "true"
+      # Leave empty locally; set it to make every change require the X-Admin-Token header
+      ADMIN_TOKEN: ${ADMIN_TOKEN:-}
+      # The car roads of Turkey for the own engine, built by scripts/build-national-graph.sh (ADR-0008). Without
+      # the file, car routes outside Kadıköy fall back to the nationwide routing service. Needs about 1 GB of heap.
+      NATIONAL_GRAPH_FILE: /data/turkey-car.graph
+    volumes:
+      - ./data:/data:ro
+    ports:
+      - "${APP_PORT:-8080}:8080"
+
+volumes:
+  db-data:
