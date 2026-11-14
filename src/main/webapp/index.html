@@ -81,6 +81,10 @@
                 <div class="field">
                     <input id="to-input" type="search" placeholder="Nereye gidiyorsunuz?" enterkeyhint="search"
                            aria-label="Varış" aria-autocomplete="list" aria-controls="suggestions">
+                    <button id="save-place" class="field-action" type="button" data-icon="star" hidden
+                            title="Bu yeri kaydet" aria-label="Bu yeri kaydet" aria-haspopup="menu"
+                            aria-expanded="false" aria-controls="save-menu"></button>
+                    <div id="save-menu" class="save-menu" role="menu" hidden></div>
                 </div>
             </div>
             <button id="swap" class="icon-button plain" type="button" data-icon="swap"
@@ -116,7 +120,14 @@
         </div>
     </form>
 
-    <section id="home" class="home" aria-label="Hızlı hedefler ve son aramalar">
+    <section id="home" class="home" aria-label="Kısayollar, kaydedilen yerler ve son aramalar">
+        <div id="shortcuts" class="shortcuts"></div>
+        <div id="favorites-block" class="recent-block" hidden>
+            <div class="section-head">
+                <h2>Kaydedilenler</h2>
+            </div>
+            <ul id="favorites-list" class="place-list"></ul>
+        </div>
         <div class="section-head">
             <h2>Hızlı hedefler</h2>
         </div>
