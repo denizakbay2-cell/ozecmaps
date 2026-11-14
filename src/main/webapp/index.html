@@ -1,0 +1,330 @@
+<!doctype html>
+<html lang="tr">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <title>ozecmaps · Türkiye için navigasyon</title>
+    <meta name="description" content="Türkiye için adım adım sesli navigasyon: Java ile yazılmış A* rota motoru, OpenStreetMap verisi ve İBB trafik verisi">
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#15171c" media="(prefers-color-scheme: dark)">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="ozecmaps">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <link rel="manifest" href="manifest.json">
+    <link rel="icon" href="assets/icons/favicon-64.png" type="image/png" sizes="64x64">
+    <link rel="icon" href="assets/icons/icon-192.png" type="image/png" sizes="192x192">
+    <link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
+    <link rel="preload" href="assets/fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="assets/fonts/inter-latin-ext.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="stylesheet" href="assets/vendor/leaflet/leaflet.css">
+    <link rel="stylesheet" href="assets/vendor/maplibre/maplibre-gl.css">
+    <link rel="stylesheet" href="assets/styles.css">
+    <script src="assets/vendor/leaflet/leaflet.js" defer></script>
+    <script src="assets/vendor/maplibre/maplibre-gl.js" defer></script>
+    <script src="assets/vendor/maplibre/leaflet-maplibre-gl.js" defer></script>
+    <script src="assets/app.js" defer></script>
+</head>
+<body>
+<div id="map" role="application" aria-label="Harita"></div>
+
+<div class="map-chips">
+    <div class="map-chip-row">
+        <button id="traffic-toggle" class="map-chip" type="button" aria-pressed="false" data-icon="traffic">
+            Trafik<span id="traffic-level" class="traffic-level" hidden></span>
+        </button>
+        <button id="business-toggle" class="map-chip" type="button" aria-pressed="true" data-icon="store">İşletmeler</button>
+    </div>
+    <div id="traffic-legend" class="traffic-legend" hidden>
+        <span><i style="background:#16a34a"></i>akıcı</span>
+        <span><i style="background:#eab308"></i>orta</span>
+        <span><i style="background:#f97316"></i>yoğun</span>
+        <span><i style="background:#dc2626"></i>çok yoğun</span>
+        <small id="traffic-note">İBB trafik verisi · İstanbul</small>
+    </div>
+</div>
+
+<aside id="panel" class="panel" aria-label="Rota planlama">
+    <button id="sheet-handle" class="sheet-handle" type="button" aria-label="Paneli büyüt" aria-expanded="false">
+        <span></span>
+    </button>
+    <header class="panel-head">
+        <button id="brand" class="brand" type="button" title="ozecmaps hakkında">
+            <span class="brand-mark"><img src="assets/img/logo-mark.jpg" alt="" width="40" height="40"></span>
+            <span class="brand-text">
+                <img class="wordmark" src="assets/img/logo-wordmark.png" alt="ozecmaps" width="118" height="20">
+                <span id="area-name">Türkiye için navigasyon</span>
+            </span>
+        </button>
+        <div class="head-actions">
+            <button id="install-button" class="icon-button" type="button" data-icon="download" hidden
+                    title="ozecmaps'i uygulama olarak yükle" aria-label="Uygulamayı yükle"></button>
+            <button id="admin-button" class="icon-button" type="button" data-icon="key"
+                    title="Yönetici anahtarı: canlı sürümde olay bildirmek için gerekir" aria-label="Yönetici anahtarı"></button>
+        </div>
+    </header>
+
+    <form id="planner" class="planner" autocomplete="off">
+        <div class="stops">
+            <div class="stop-rail" aria-hidden="true">
+                <span class="rail-dot from"></span>
+                <span class="rail-line"></span>
+                <span class="rail-dot to"></span>
+            </div>
+            <div class="stop-fields">
+                <div class="field">
+                    <input id="from-input" type="search" placeholder="Nereden?" enterkeyhint="search"
+                           aria-label="Başlangıç" aria-autocomplete="list" aria-controls="suggestions">
+                    <button id="locate" class="field-action" type="button" data-icon="locate"
+                            title="Konumumu kullan" aria-label="Konumumu kullan"></button>
+                </div>
+                <div class="field">
+                    <input id="to-input" type="search" placeholder="Nereye gidiyorsunuz?" enterkeyhint="search"
+                           aria-label="Varış" aria-autocomplete="list" aria-controls="suggestions">
+                </div>
+            </div>
+            <button id="swap" class="icon-button plain" type="button" data-icon="swap"
+                    title="Başlangıç ile varışı değiştir" aria-label="Başlangıç ile varışı değiştir"></button>
+            <ul id="suggestions" class="suggestions" role="listbox" hidden></ul>
+        </div>
+
+        <div class="modes" role="radiogroup" aria-label="Ulaşım şekli">
+            <button type="button" role="radio" data-mode="car" aria-checked="true">
+                <span data-icon="car"></span>Araç
+            </button>
+            <button type="button" role="radio" data-mode="bicycle" aria-checked="false">
+                <span data-icon="bicycle"></span>Bisiklet
+            </button>
+            <button type="button" role="radio" data-mode="foot" aria-checked="false">
+                <span data-icon="foot"></span>Yürüyüş
+            </button>
+        </div>
+
+        <div class="options">
+            <label class="select-pill" title="Araç rotalarında o saatin olağan İstanbul trafiği hesaba katılır">
+                <span data-icon="clock"></span>
+                <span class="visually-hidden">Kalkış</span>
+                <select id="depart">
+                    <option value="now">Şimdi çık</option>
+                    <option value="30">30 dk sonra</option>
+                    <option value="60">1 saat sonra</option>
+                    <option value="120">2 saat sonra</option>
+                    <option value="tomorrow-8">Yarın 08:00</option>
+                    <option value="tomorrow-18">Yarın 18:00</option>
+                </select>
+            </label>
+        </div>
+    </form>
+
+    <section id="home" class="home" aria-label="Hızlı hedefler ve son aramalar">
+        <div class="section-head">
+            <h2>Hızlı hedefler</h2>
+        </div>
+        <div id="quick-destinations" class="quick-list"></div>
+        <div id="recent-block" class="recent-block" hidden>
+            <div class="section-head">
+                <h2>Son aramalar</h2>
+                <button id="clear-recent" class="link-button" type="button">Temizle</button>
+            </div>
+            <ul id="recent-list" class="place-list"></ul>
+        </div>
+        <p id="hint" class="hint">Türkiye'nin her yerinde yer ya da işletme arayın veya haritaya dokunun.</p>
+    </section>
+
+    <section id="result" class="result" hidden aria-live="polite">
+        <div class="route-card">
+            <div class="route-main">
+                <div class="route-time">
+                    <strong id="summary-time"></strong>
+                    <span id="summary-distance"></span>
+                </div>
+                <span id="summary-arrival" class="arrival"></span>
+            </div>
+            <div class="route-tags">
+                <span id="summary-choice" class="tag" hidden></span>
+                <span id="summary-traffic" class="tag" hidden></span>
+                <span id="summary-engine" class="tag engine"></span>
+            </div>
+        </div>
+        <button id="route-switch" class="route-switch" type="button" hidden
+                title="Haritadaki soluk rotaya dokunarak da geçebilirsiniz">
+            <i class="route-switch-icon" data-icon="route"></i>
+            <span class="route-switch-text">
+                <strong id="switch-title"></strong>
+                <span id="switch-detail"></span>
+            </span>
+            <span class="route-switch-action">Seç</span>
+        </button>
+        <ul id="route-warnings" class="warnings"></ul>
+        <button id="start-navigation" class="button primary wide large" type="button">
+            <span data-icon="navigate"></span>Navigasyonu başlat
+        </button>
+        <div class="section-head">
+            <h2>Yol tarifi</h2>
+            <span id="steps-count" class="muted small"></span>
+        </div>
+        <ol id="steps" class="steps"></ol>
+        <p id="route-stats" class="route-stats"></p>
+    </section>
+
+    <section class="incidents" aria-labelledby="incidents-title">
+        <div class="section-head">
+            <h2 id="incidents-title">Yol durumu</h2>
+            <button id="report-button" class="button ghost small" type="button">
+                <span data-icon="warning"></span>Olay bildir
+            </button>
+        </div>
+        <ul id="incident-list" class="incident-list"></ul>
+    </section>
+
+    <footer class="panel-foot">
+        Harita verisi © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>
+        katkıda bulunanlar (ODbL), harita altlığı <a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a>.
+        Rotalar Java ile yazılmış A* motorumuzla: Kadıköy'de bütün yollarda, Türkiye genelinde araç yollarında.
+        Kadıköy dışındaki yürüyüş ve bisiklet rotaları
+        <a href="https://routing.openstreetmap.de/about.html" target="_blank" rel="noopener">OSRM (FOSSGIS)</a>,
+        arama <a href="https://photon.komoot.io" target="_blank" rel="noopener">Photon</a> ile. İstanbul trafiği:
+        <a href="https://data.ibb.gov.tr" target="_blank" rel="noopener">İBB Açık Veri Portalı</a> (İBB Açık Veri Lisansı).
+    </footer>
+</aside>
+
+<div id="nav-banner" class="nav-banner" hidden aria-live="assertive">
+    <div class="nav-main">
+        <div id="nav-icon" class="nav-icon"></div>
+        <div class="nav-text">
+            <div id="nav-distance" class="nav-distance"></div>
+            <div id="nav-instruction" class="nav-instruction"></div>
+            <div id="nav-street" class="nav-street"></div>
+        </div>
+    </div>
+    <div id="nav-then" class="nav-then" hidden>
+        <span>Sonra</span>
+        <span id="nav-then-icon" class="nav-then-icon"></span>
+        <span id="nav-then-text" class="nav-then-text"></span>
+    </div>
+</div>
+
+<div id="nav-speed" class="nav-speed" hidden aria-label="Hız">
+    <strong id="nav-speed-value"></strong>
+    <span>km/sa</span>
+</div>
+
+<button id="nav-recenter" class="nav-recenter" type="button" hidden>
+    <span data-icon="locate"></span>Konumuma odaklan
+</button>
+
+<div id="nav-bar" class="nav-bar" hidden>
+    <div class="nav-progress" aria-hidden="true"><span id="nav-progress"></span></div>
+    <div class="nav-bar-row">
+        <div class="nav-remaining">
+            <strong id="nav-time"></strong>
+            <span id="nav-meta"></span>
+            <span id="nav-source" class="nav-source"></span>
+        </div>
+        <button id="nav-voice" class="icon-button round" type="button" aria-pressed="true" data-icon="volume"
+                title="Sesli yönlendirme" aria-label="Sesli yönlendirme"></button>
+        <button id="nav-simulate" class="button small" type="button" title="Rotayı sizin yerinize sürer">
+            <span data-icon="play"></span><span class="label">Simülasyon</span>
+        </button>
+        <button id="nav-stop" class="button danger small" type="button">Bitir</button>
+    </div>
+</div>
+
+<section id="intro" class="intro" hidden aria-labelledby="intro-title">
+    <div class="intro-inner">
+        <header class="intro-head">
+            <span class="brand-mark large"><img src="assets/img/logo-mark.jpg" alt="" width="52" height="52"></span>
+            <img class="wordmark large" src="assets/img/logo-wordmark.png" alt="ozecmaps" width="177" height="30">
+            <span class="intro-badge">Türkiye için navigasyon</span>
+        </header>
+        <div class="intro-hero">
+            <div class="intro-copy">
+                <h1 id="intro-title">Trafiği bilen rota,<br>adım adım sesli tarif.</h1>
+                <p class="intro-lead">Kendi yazdığımız Java rota motoru Türkiye'nin 3,3 milyon kavşağında en iyi
+                    yolu bulur; İstanbul'da İBB'nin trafik verisini hesaba katar ve sizi Türkçe, sesli olarak
+                    yönlendirir.</p>
+                <div class="intro-actions">
+                    <button id="intro-start" class="button primary large" type="button">
+                        <span data-icon="map"></span>Haritayı aç
+                    </button>
+                    <button id="intro-locate" class="button large" type="button">
+                        <span data-icon="locate"></span>Konumumla başla
+                    </button>
+                </div>
+                <button id="intro-install" class="link-button install-link" type="button" hidden>
+                    <span data-icon="download"></span>Telefona uygulama olarak yükle
+                </button>
+                <p id="intro-ios" class="intro-note" hidden>iPhone ve iPad'de: Safari'de <strong>Paylaş</strong> →
+                    <strong>Ana Ekrana Ekle</strong> ile uygulama gibi kurabilirsiniz.</p>
+            </div>
+            <figure class="intro-shot">
+                <img src="assets/img/preview.jpg" alt="Kadıköy'de İBB trafik katmanı üzerinde bir araç rotası"
+                     width="1200" height="760" loading="lazy">
+            </figure>
+        </div>
+        <ul class="intro-features">
+            <li>
+                <div class="feature-icon" data-icon="car"></div>
+                <strong>Türkiye geneli rota</strong>
+                <p>Edirne'den Van'a 1.761 km'lik rotayı kendi motorumuz 1,5 saniyede bulur.</p>
+            </li>
+            <li>
+                <div class="feature-icon traffic" data-icon="traffic"></div>
+                <strong>İstanbul trafiği</strong>
+                <p>Saat saat olağan trafik ve İBB'nin canlı endeksi; kalkış saatini de seçebilirsiniz.</p>
+            </li>
+            <li>
+                <div class="feature-icon voice" data-icon="volume"></div>
+                <strong>Sesli navigasyon</strong>
+                <p>Türkçe, adım adım; rotadan çıkınca yeni rotayı hemen hesaplar.</p>
+            </li>
+            <li>
+                <div class="feature-icon places" data-icon="store"></div>
+                <strong>Yerler ve işletmeler</strong>
+                <p>Türkiye'nin her yerinde arama; Kadıköy'de 6.200 işletme haritada.</p>
+            </li>
+        </ul>
+        <footer class="intro-foot">
+            Harita verisi © OpenStreetMap katkıda bulunanlar · Trafik: İBB Açık Veri Portalı ·
+            Jakarta EE ile yazılmış bir ders projesi
+        </footer>
+    </div>
+</section>
+
+<dialog id="incident-dialog" class="dialog">
+    <form id="incident-form" method="dialog">
+        <h2>Yol olayı bildir</h2>
+        <p id="incident-where" class="muted small"></p>
+        <label>
+            <span>Olay</span>
+            <select name="type" required>
+                <option value="ACCIDENT">Kaza: araçlar yavaşlar</option>
+                <option value="ROADWORK">Yol çalışması: araçlar yavaşlar</option>
+                <option value="CONGESTION">Yoğun trafik: araçlar çok yavaşlar</option>
+                <option value="CLOSURE">Kapalı yol: araçlar ve bisikletler geçemez</option>
+            </select>
+        </label>
+        <label>
+            <span>Açıklama (isteğe bağlı)</span>
+            <input name="description" maxlength="300" placeholder="Örneğin: sağ şerit kapalı">
+        </label>
+        <label>
+            <span>Ne kadar sürecek?</span>
+            <select name="duration">
+                <option value="30">30 dakika</option>
+                <option value="60" selected>1 saat</option>
+                <option value="180">3 saat</option>
+                <option value="1440">1 gün</option>
+                <option value="">Kaldırılana kadar</option>
+            </select>
+        </label>
+        <div class="dialog-actions">
+            <button class="button ghost" value="cancel" formnovalidate type="submit">Vazgeç</button>
+            <button class="button primary" value="report" type="submit">Bildir</button>
+        </div>
+    </form>
+</dialog>
+
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+</body>
+</html>

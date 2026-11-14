@@ -1,0 +1,20 @@
+{
+  "name": "ozecmaps · Türkiye için navigasyon",
+  "short_name": "ozecmaps",
+  "description": "Türkiye için adım adım sesli navigasyon; İstanbul'da İBB trafik verisiyle.",
+  "lang": "tr",
+  "dir": "ltr",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#ffffff",
+  "theme_color": "#2e3038",
+  "categories": ["navigation", "travel"],
+  "icons": [
+    { "src": "assets/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "assets/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "assets/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
