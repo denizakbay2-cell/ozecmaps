@@ -1,0 +1,106 @@
+{
+ "code": "Ok",
+ "waypoints": [
+  {
+   "name": "",
+   "location": [
+    32.85,
+    39.92
+   ],
+   "distance": 3.2
+  },
+  {
+   "name": "Atatürk Bulvarı",
+   "location": [
+    32.86,
+    39.93
+   ],
+   "distance": 2500.5
+  }
+ ],
+ "routes": [
+  {
+   "distance": 900.0,
+   "duration": 120.0,
+   "legs": [
+    {
+     "steps": [
+      {
+       "geometry": "_wockA_d_t}@?_|B",
+       "name": "",
+       "ref": "D-200",
+       "distance": 200.0,
+       "duration": 30.0,
+       "maneuver": {
+        "type": "depart",
+        "modifier": "right",
+        "bearing_after": 90,
+        "location": [
+         32.85,
+         39.92
+        ]
+       }
+      },
+      {
+       "geometry": "_wockA_act}@_|B?",
+       "name": "Kızılay Meydanı",
+       "distance": 300.0,
+       "duration": 40.0,
+       "maneuver": {
+        "type": "roundabout",
+        "modifier": "right",
+        "exit": 2,
+        "location": [
+         32.852,
+         39.92
+        ]
+       }
+      },
+      {
+       "geometry": "_tsckA_act}@?~{B",
+       "name": "Kızılay Meydanı",
+       "distance": 50.0,
+       "duration": 10.0,
+       "maneuver": {
+        "type": "exit roundabout",
+        "modifier": "right",
+        "location": [
+         32.852,
+         39.922
+        ]
+       }
+      },
+      {
+       "geometry": "_tsckA_d_t}@~{B?",
+       "name": "Atatürk Bulvarı",
+       "distance": 350.0,
+       "duration": 40.0,
+       "maneuver": {
+        "type": "fork",
+        "modifier": "slight left",
+        "location": [
+         32.85,
+         39.922
+        ]
+       }
+      },
+      {
+       "geometry": "_wockA_d_t}@??",
+       "name": "Atatürk Bulvarı",
+       "distance": 0.0,
+       "duration": 0.0,
+       "maneuver": {
+        "type": "arrive",
+        "modifier": "left",
+        "location": [
+         32.85,
+         39.92
+        ]
+       }
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}
