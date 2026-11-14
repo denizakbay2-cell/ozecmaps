@@ -22,6 +22,7 @@ import jakarta.inject.Inject;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
@@ -55,6 +56,8 @@ public class RouteService {
     /** Traffic is known by day type and hour, so any time works; these limits only keep requests sensible. */
     static final Duration MAX_DEPARTURE_IN_PAST = Duration.ofDays(1);
     static final Duration MAX_DEPARTURE_AHEAD = Duration.ofDays(7);
+    /** At most this many stops between the start and the destination. */
+    static final int MAX_STOPS = 3;
 
     private static final Logger LOGGER = Logger.getLogger(RouteService.class.getName());
 
@@ -78,6 +81,48 @@ public class RouteService {
         this.clock = clock;
         this.nationwide = nationwide;
         this.external = external;
+    }
+
+    /**
+     * A route through stops, in the given order. Each leg is planned like a route of its own, with the traffic of the
+     * time it starts (the departure plus the legs before it), and the legs are joined into one route whose steps say
+     * where a stop is reached. Routes with stops get no alternative.
+     *
+     * @param stops at most {@link #MAX_STOPS} points between the start and the destination; none for a plain route
+     */
+    public RouteResponse plan(GeoPoint from, List<GeoPoint> stops, GeoPoint to, TravelMode mode,
+                              Optimization optimization, Instant departAt, boolean alternative) {
+        if (stops.isEmpty()) {
+            return plan(from, to, mode, optimization, departAt, alternative);
+        }
+        if (stops.size() > MAX_STOPS) {
+            throw new BusinessRuleException("En fazla " + MAX_STOPS + " ara durak eklenebilir");
+        }
+        List<GeoPoint> points = new ArrayList<>();
+        points.add(from);
+        points.addAll(stops);
+        points.add(to);
+        List<RouteResponse> legs = new ArrayList<>();
+        Instant legStart = departure(departAt);
+        for (int leg = 0; leg + 1 < points.size(); leg++) {
+            RouteResponse planned;
+            try {
+                planned = plan(points.get(leg), points.get(leg + 1), mode, optimization, legStart, false);
+            } catch (BusinessRuleException e) {
+                throw new BusinessRuleException(legName(leg, stops.size()) + ": " + e.getMessage());
+            }
+            legs.add(planned);
+            legStart = legStart.plusSeconds(Math.round(planned.durationSeconds()));
+        }
+        return DtoMapper.joinLegs(legs);
+    }
+
+    /** "1. ara durağa giden yol", so that a problem with a stop names the stop. */
+    private static String legName(int leg, int stops) {
+        if (leg == stops) {
+            return (stops == 1 ? "Ara duraktan" : "Son ara duraktan") + " hedefe giden yol";
+        }
+        return (stops == 1 ? "Ara durağa" : leg + 1 + ". ara durağa") + " giden yol";
     }
 
     /**

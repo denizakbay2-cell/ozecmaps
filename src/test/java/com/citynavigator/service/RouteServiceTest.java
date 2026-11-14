@@ -147,6 +147,46 @@ class RouteServiceTest {
     }
 
     @Test
+    void plansThroughAStopAndJoinsTheLegsIntoOneRoute() {
+        GeoPoint from = GraphFixture.at(0, 0.1);
+        GeoPoint stop = GraphFixture.at(0.9, 1);
+        GeoPoint to = GraphFixture.at(0, 1.9);
+        RouteResponse first = service.plan(from, stop, TravelMode.CAR, Optimization.FASTEST, null);
+        RouteResponse second = service.plan(stop, to, TravelMode.CAR, Optimization.FASTEST, null);
+
+        RouteResponse route = service.plan(from, List.of(stop), to, TravelMode.CAR, Optimization.FASTEST, null, true);
+
+        assertThat(route.distanceMeters()).isEqualTo(first.distanceMeters() + second.distanceMeters());
+        assertThat(route.durationSeconds()).isEqualTo(first.durationSeconds() + second.durationSeconds());
+        // the legs share the stop: the joined line has one point less than the two together
+        assertThat(route.geometry()).hasSize(first.geometry().size() + second.geometry().size() - 1);
+        assertThat(route.instructions()).extracting(InstructionView::maneuver).containsExactly(
+                "DEPART", "LEFT", "WAYPOINT", "CONTINUE", "LEFT", "ARRIVE");
+        InstructionView reached = route.instructions().get(2);
+        assertThat(reached.text()).isEqualTo("Ara durağa ulaştınız");
+        assertThat(reached.pointIndex()).isEqualTo(first.geometry().size() - 1);
+        assertThat(route.instructions().getLast().pointIndex()).isEqualTo(route.geometry().size() - 1);
+        assertThat(route.from()).isEqualTo(first.from());
+        assertThat(route.to()).isEqualTo(second.to());
+        assertThat(route.alternatives()).isEmpty();
+    }
+
+    @Test
+    void namesTheLegOfAStopThatCannotBeReachedAndLimitsTheStops() {
+        GeoPoint from = GraphFixture.at(0, 0.1);
+        GeoPoint to = GraphFixture.at(0, 1.9);
+
+        assertThatThrownBy(() -> service.plan(from, List.of(GraphFixture.at(-4, 1)), to, TravelMode.CAR,
+                Optimization.FASTEST, null, false))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessage("Ara durağa giden yol: Varış noktasının 300 m yakınında araç yolu yok");
+        GeoPoint stop = GraphFixture.at(0, 1);
+        assertThatThrownBy(() -> service.plan(from, List.of(stop, stop, stop, stop), to, TravelMode.CAR,
+                Optimization.FASTEST, null, false))
+                .isInstanceOf(BusinessRuleException.class).hasMessage("En fazla 3 ara durak eklenebilir");
+    }
+
+    @Test
     void listsTheIncidentsThatSlowTheRouteDown() {
         TrafficConditions traffic = TrafficConditions.NONE.with(TrafficConditions.Restriction.slowdown(7, 0.5, null),
                 List.of(graph.segment(10, 0)));

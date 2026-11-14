@@ -1,6 +1,7 @@
 package com.citynavigator.resource;
 
 import com.citynavigator.dto.RouteResponse;
+import com.citynavigator.routing.GeoPoint;
 import com.citynavigator.routing.Optimization;
 import com.citynavigator.routing.TravelMode;
 import com.citynavigator.service.RouteService;
@@ -18,13 +19,16 @@ import jakarta.ws.rs.core.MediaType;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeParseException;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Locale;
 
 /**
- * {@code /api/route?from=lat,lon&to=lat,lon&mode=car|bicycle|foot&optimize=fastest|shortest&departAt=2026-11-14T18:00+03:00&alternatives=true}.
+ * {@code /api/route?from=lat,lon&to=lat,lon&via=lat,lon;lat,lon&mode=car|bicycle|foot&optimize=fastest|shortest&departAt=2026-11-14T18:00+03:00&alternatives=true}.
  * A GET, because planning a route changes nothing and the URL describes the route completely. Without
- * {@code departAt} the trip starts now; with {@code alternatives=true} the response also carries a second, clearly
- * different route if there is a good one.
+ * {@code departAt} the trip starts now; {@code via} names up to three stops, in order; with
+ * {@code alternatives=true} a route without stops also carries a second, clearly different route if there is a good
+ * one.
  */
 @Path("route")
 @RequestScoped
@@ -32,6 +36,9 @@ import java.util.Locale;
 public class RouteResource {
 
     /** Date, time to the minute or finer, and an offset: what {@code Date.toISOString()} produces, among others. */
+    /** One to three coordinates separated by semicolons. */
+    static final String STOPS_PATTERN = Coordinates.PATTERN + "(;" + Coordinates.PATTERN + "){0,2}";
+
     static final String DEPARTURE_PATTERN =
             "\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d{1,9})?)?(Z|[+-]\\d{2}:\\d{2})";
 
@@ -60,11 +67,21 @@ public class RouteResource {
             @Pattern(regexp = DEPARTURE_PATTERN, message = "saat dilimiyle birlikte ISO-8601 zamanı olmalı, örneğin "
                     + "2026-11-14T18:00+03:00") String departAt,
             @QueryParam("alternatives") @DefaultValue("false")
-            @Pattern(regexp = "true|false", message = "true ya da false olmalı") String alternatives) {
-        return routes.plan(Coordinates.parse(from, "from"), Coordinates.parse(to, "to"),
+            @Pattern(regexp = "true|false", message = "true ya da false olmalı") String alternatives,
+            @QueryParam("via")
+            @Pattern(regexp = STOPS_PATTERN, message = "en fazla 3 nokta, enlem,boylam;enlem,boylam biçiminde olmalı")
+            String via) {
+        return routes.plan(Coordinates.parse(from, "from"), parseStops(via), Coordinates.parse(to, "to"),
                 TravelMode.valueOf(mode.toUpperCase(Locale.ROOT)),
                 Optimization.valueOf(optimize.toUpperCase(Locale.ROOT)), parseDeparture(departAt),
                 Boolean.parseBoolean(alternatives));
+    }
+
+    static List<GeoPoint> parseStops(String value) {
+        if (value == null || value.isBlank()) {
+            return List.of();
+        }
+        return Arrays.stream(value.split(";")).map(stop -> Coordinates.parse(stop, "via")).toList();
     }
 
     static Instant parseDeparture(String value) {

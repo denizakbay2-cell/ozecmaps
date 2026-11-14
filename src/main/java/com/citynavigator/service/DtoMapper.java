@@ -28,7 +28,9 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.LinkedHashSet;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * Entities and routing results to DTOs. Coordinates are rounded to six decimals (about 10 cm), which keeps
@@ -39,6 +41,10 @@ final class DtoMapper {
     static final String OWN_ENGINE = "astar";
     static final String NATIONAL_ENGINE = "national";
     static final String NATIONWIDE_ENGINE = "osrm";
+    /** The engine of a route whose legs were planned by different engines. */
+    static final String MIXED_ENGINES = "mixed";
+    /** The step at which a stop is reached. */
+    static final String WAYPOINT = "WAYPOINT";
 
     private DtoMapper() {
     }
@@ -66,6 +72,53 @@ final class DtoMapper {
                 Math.round(route.distanceMeters()), Math.round(route.durationSeconds()), departAt, null,
                 toSnapped(route.from()), toSnapped(route.to()), geometry(route.points()), List.of(),
                 steps(route.instructions(), route.points()), List.of(), 0, List.of());
+    }
+
+    /**
+     * Legs planned one after the other, joined into one route: the geometry runs on (each leg starts where the one
+     * before ended), the arrival of every leg but the last becomes the step "Ara durağa ulaştınız", and the start of the
+     * next leg goes on straight. Totals add up; the traffic delay is known only if it is known for every leg.
+     */
+    static RouteResponse joinLegs(List<RouteResponse> legs) {
+        List<double[]> geometry = new ArrayList<>();
+        List<InstructionView> steps = new ArrayList<>();
+        List<TrafficStretch> traffic = new ArrayList<>();
+        Set<Long> incidents = new LinkedHashSet<>();
+        double distance = 0;
+        double duration = 0;
+        Long delay = 0L;
+        int visited = 0;
+        for (int index = 0; index < legs.size(); index++) {
+            RouteResponse leg = legs.get(index);
+            boolean last = index == legs.size() - 1;
+            int offset = geometry.isEmpty() ? 0 : geometry.size() - 1;
+            geometry.addAll(index == 0 ? leg.geometry() : leg.geometry().subList(1, leg.geometry().size()));
+            for (InstructionView step : leg.instructions()) {
+                steps.add(joined(step, offset, index, legs.size() - 1, last));
+            }
+            for (TrafficStretch stretch : leg.traffic()) {
+                traffic.add(new TrafficStretch(stretch.from() + offset, stretch.to() + offset, stretch.factor()));
+            }
+            incidents.addAll(leg.incidentIds());
+            distance += leg.distanceMeters();
+            duration += leg.durationSeconds();
+            delay = delay == null || leg.trafficDelaySeconds() == null ? null : delay + leg.trafficDelaySeconds();
+            visited += leg.visitedNodes();
+        }
+        RouteResponse first = legs.getFirst();
+        boolean oneEngine = legs.stream().allMatch(leg -> leg.engine().equals(first.engine()));
+        return new RouteResponse(first.mode(), first.optimize(), oneEngine ? first.engine() : MIXED_ENGINES, distance,
+                duration, first.departAt(), delay, first.from(), legs.getLast().to(), geometry, traffic, steps,
+                List.copyOf(incidents), visited, List.of());
+    }
+
+    private static InstructionView joined(InstructionView step, int offset, int leg, int stops, boolean lastLeg) {
+        boolean stopReached = !lastLeg && "ARRIVE".equals(step.maneuver());
+        boolean goingOn = leg > 0 && "DEPART".equals(step.maneuver());
+        String maneuver = stopReached ? WAYPOINT : goingOn ? "CONTINUE" : step.maneuver();
+        String text = stopReached ? (stops == 1 ? "Ara durağa" : leg + 1 + ". ara durağa") + " ulaştınız" : step.text();
+        return new InstructionView(maneuver, text, step.street(), step.exit(), step.pointIndex() + offset, step.lat(),
+                step.lon(), step.distanceMeters(), step.durationSeconds());
     }
 
     /**

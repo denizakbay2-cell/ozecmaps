@@ -502,6 +502,34 @@ svg.icon {
     min-width: 0;
 }
 
+.stop-list {
+    display: contents;
+}
+
+.rail-dot.stop {
+    width: 10px;
+    height: 10px;
+    border: 2px solid var(--text);
+    border-radius: 3px;
+    background: var(--surface);
+}
+
+/* under the fields, in line with them (the rail column and the gap come first) */
+.add-stop {
+    display: inline-flex;
+    align-items: center;
+    align-self: flex-start;
+    gap: 6px;
+    min-height: 32px;
+    margin: -6px 0 -4px 30px;
+    font-size: 0.85rem;
+}
+
+.add-stop .icon {
+    width: 16px;
+    height: 16px;
+}
+
 .field {
     position: relative;
 }
@@ -1676,6 +1704,19 @@ svg.icon {
     border: 5px solid var(--ink);
     background: var(--lime);
     box-shadow: 0 0 0 2px #fff, 0 3px 8px rgb(0 0 0 / 30%);
+}
+
+/* a stop on the way: its number in the logo's colours */
+.marker-stop {
+    display: grid;
+    place-items: center;
+    width: 26px;
+    height: 26px;
+    border-radius: 8px;
+    background: var(--ink);
+    box-shadow: 0 0 0 2px #fff, 0 3px 8px rgb(0 0 0 / 30%);
+    color: var(--lime);
+    font: 800 0.85rem/1 var(--font);
 }
 
 .marker-end {

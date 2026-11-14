@@ -66,7 +66,7 @@
 
     <form id="planner" class="planner" autocomplete="off">
         <div class="stops">
-            <div class="stop-rail" aria-hidden="true">
+            <div id="stop-rail" class="stop-rail" aria-hidden="true">
                 <span class="rail-dot from"></span>
                 <span class="rail-line"></span>
                 <span class="rail-dot to"></span>
@@ -78,6 +78,7 @@
                     <button id="locate" class="field-action" type="button" data-icon="locate"
                             title="Konumumu kullan" aria-label="Konumumu kullan"></button>
                 </div>
+                <div id="stop-list" class="stop-list"></div>
                 <div class="field">
                     <input id="to-input" type="search" placeholder="Nereye gidiyorsunuz?" enterkeyhint="search"
                            aria-label="Varış" aria-autocomplete="list" aria-controls="suggestions">
@@ -91,6 +92,9 @@
                     title="Başlangıç ile varışı değiştir" aria-label="Başlangıç ile varışı değiştir"></button>
             <ul id="suggestions" class="suggestions" role="listbox" hidden></ul>
         </div>
+        <button id="add-stop" class="link-button add-stop" type="button">
+            <span data-icon="plus"></span>Ara durak ekle
+        </button>
 
         <div class="modes" role="radiogroup" aria-label="Ulaşım şekli">
             <button type="button" role="radio" data-mode="car" aria-checked="true">

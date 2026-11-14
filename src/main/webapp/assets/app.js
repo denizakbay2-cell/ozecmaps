@@ -72,7 +72,11 @@ const QUICK_DESTINATIONS = [
     { label: 'Sultanahmet', kind: 'Meydan', detail: 'Fatih', lat: 41.00652, lon: 28.97598, icon: 'landmark' },
     { label: 'Ankara, Kızılay', kind: 'Meydan', detail: 'Çankaya, Ankara', lat: 39.9208, lon: 32.8541, icon: 'city' }
 ];
-const ENGINE_LABELS = { astar: 'Kendi motorumuz · ayrıntılı', national: 'Kendi motorumuz · Türkiye', osrm: 'OSRM' };
+const ENGINE_LABELS = {
+    astar: 'Kendi motorumuz · ayrıntılı', national: 'Kendi motorumuz · Türkiye', osrm: 'OSRM', mixed: 'Birden fazla motor'
+};
+/** At most this many stops between the start and the destination (as on the server). */
+const MAX_STOPS = 3;
 /** The other routes are drawn faded under the chosen one: casing, core and the casing under the pointer. */
 const ALTERNATIVE_STYLE = {
     light: { casing: '#a3a9b3', core: '#e3f5b4', hover: '#6b7280' },
@@ -96,6 +100,8 @@ const state = {
     depart: 'now',
     from: null,
     to: null,
+    /** Stops between the start and the destination, in order; an entry is null while its field is still empty. */
+    stops: [],
     /** The chosen route; routes holds it with the other offered ones, the fastest first. */
     route: null,
     routes: [],
@@ -173,6 +179,7 @@ const ICONS = {
     school: [['path', { d: 'M2.5 9.5 12 5l9.5 4.5L12 14Z' }], ['path', { d: 'M6.5 11.5V16c3.5 2.5 7.5 2.5 11 0v-4.5M21.5 9.5V15' }]],
     expand: [['path', { d: 'm6 15 6-6 6 6' }]],
     share: [['path', { d: 'M12 15V3.5M7.5 8 12 3.5 16.5 8M5 12.5V20h14v-7.5' }]],
+    plus: [['path', { d: 'M12 5v14M5 12h14' }]],
     star: [['path', { d: 'M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9Z' }]],
     home: [['path', { d: 'M4 11.5 12 4.5l8 7V20h-5.5v-5.5h-5V20H4Z' }]],
     briefcase: [['rect', { x: 3, y: 7, width: 18, height: 13, rx: 2 }],
@@ -182,7 +189,7 @@ const ICONS = {
 const MANEUVER_ICONS = {
     DEPART: 'depart', CONTINUE: 'straight', SLIGHT_LEFT: 'slightLeft', LEFT: 'left', SHARP_LEFT: 'sharpLeft',
     SLIGHT_RIGHT: 'slightRight', RIGHT: 'right', SHARP_RIGHT: 'sharpRight', U_TURN: 'uTurn',
-    ROUNDABOUT: 'roundabout', ARRIVE: 'arrive'
+    ROUNDABOUT: 'roundabout', ARRIVE: 'arrive', WAYPOINT: 'pin'
 };
 
 function icon(name) {
@@ -489,10 +496,16 @@ function onMapClick(event) {
     const startHere = el('button', { class: `button small${state.from ? '' : ' primary'}`, type: 'button' },
         'Buradan başla');
     const report = insideArea(point) ? el('button', { class: 'button small ghost', type: 'button' }, 'Olay bildir') : null;
+    const canStop = state.from && state.to && state.stops.length < MAX_STOPS;
+    const stopHere = canStop ? el('button', { class: 'button small', type: 'button' }, 'Durak ekle') : null;
     const popup = L.popup().setLatLng(event.latlng)
         .setContent(el('div', { class: 'popup' }, el('div', { class: 'popup-title' }, 'Seçilen nokta'), street,
-            el('div', { class: 'popup-actions' }, startHere, goHere, report)))
+            el('div', { class: 'popup-actions' }, startHere, goHere, stopHere, report)))
         .openOn(map);
+    stopHere?.addEventListener('click', () => {
+        map.closePopup(popup);
+        addStop(point);
+    });
     startHere.addEventListener('click', () => {
         map.closePopup(popup);
         setStop('from', point);
@@ -522,17 +535,37 @@ async function streetName(point) {
 
 /* ---------- start and destination ---------- */
 
+/** 'from', 'to' or 'stop0'…'stop2': the stops of a route as the search boxes and markers name them. */
+function stopIndex(which) {
+    return which.startsWith('stop') ? Number(which.slice(4)) : -1;
+}
+
+function getStop(which) {
+    const index = stopIndex(which);
+    return index >= 0 ? state.stops[index] ?? null : state[which];
+}
+
+function putStop(which, point) {
+    const index = stopIndex(which);
+    if (index >= 0) state.stops[index] = point;
+    else state[which] = point;
+}
+
 function markerFor(which, point) {
-    const html = el('div', { class: which === 'from' ? 'marker-start' : 'marker-end' });
+    const index = stopIndex(which);
+    const html = index >= 0 ? el('div', { class: 'marker-stop' }, String(index + 1))
+        : el('div', { class: which === 'from' ? 'marker-start' : 'marker-end' });
+    const size = index >= 0 ? 26 : which === 'from' ? 22 : 30;
     const marker = L.marker([point.lat, point.lon], {
         draggable: true,
         keyboard: false,
-        title: which === 'from' ? 'Başlangıç (sürükleyebilirsiniz)' : 'Varış (sürükleyebilirsiniz)',
+        title: index >= 0 ? `${index + 1}. ara durak (sürükleyebilirsiniz)`
+            : which === 'from' ? 'Başlangıç (sürükleyebilirsiniz)' : 'Varış (sürükleyebilirsiniz)',
         icon: L.divIcon({
             className: '',
             html,
-            iconSize: which === 'from' ? [22, 22] : [30, 30],
-            iconAnchor: which === 'from' ? [11, 11] : [15, 30]
+            iconSize: [size, size],
+            iconAnchor: which === 'to' ? [15, 30] : [size / 2, size / 2]
         })
     });
     marker.on('dragend', () => {
@@ -543,7 +576,7 @@ function markerFor(which, point) {
 }
 
 async function setStop(which, point, { plan = true } = {}) {
-    state[which] = point;
+    putStop(which, point);
     const input = $(`#${which}-input`);
     input.value = point.label ?? 'Seçilen nokta';
     drawStops();
@@ -553,7 +586,7 @@ async function setStop(which, point, { plan = true } = {}) {
     }
     if (!point.label) {
         streetName(point).then((name) => {
-            if (state[which] !== point) return;
+            if (getStop(which) !== point) return;
             point.label = name ?? 'Seçilen nokta';
             input.value = point.label;
         });
@@ -562,8 +595,13 @@ async function setStop(which, point, { plan = true } = {}) {
 }
 
 function clearStop(which) {
-    state[which] = null;
+    putStop(which, null);
     drawStops();
+    // an emptied stop leaves the route; an emptied start or destination ends it
+    if (stopIndex(which) >= 0) {
+        planRoute();
+        return;
+    }
     if (which === 'to') updateSaveButton();
     clearRoute();
     writeHash();
@@ -571,13 +609,65 @@ function clearStop(which) {
 
 function drawStops() {
     layers.markers.clearLayers();
-    for (const which of ['from', 'to']) {
-        if (state[which]) markerFor(which, state[which]).addTo(layers.markers);
+    for (const which of ['from', ...state.stops.map((_, index) => `stop${index}`), 'to']) {
+        const point = getStop(which);
+        if (point) markerFor(which, point).addTo(layers.markers);
     }
+}
+
+/** The fields of the stops between the start and the destination, and the dots of the rail beside them. */
+function renderStopFields() {
+    $('#stop-list').replaceChildren(...state.stops.map((point, index) => {
+        const input = el('input', {
+            id: `stop${index}-input`,
+            type: 'search',
+            placeholder: state.stops.length > 1 ? `${index + 1}. ara durak` : 'Ara durak',
+            enterkeyhint: 'search',
+            'aria-label': `${index + 1}. ara durak`,
+            'aria-autocomplete': 'list',
+            'aria-controls': 'suggestions'
+        });
+        input.value = point?.label ?? '';
+        attachSearch(input, `stop${index}`);
+        return el('div', { class: 'field stop-field' }, input, el('button', {
+            class: 'field-action',
+            type: 'button',
+            title: 'Durağı kaldır',
+            'aria-label': `${index + 1}. ara durağı kaldır`,
+            onclick: () => removeStop(index)
+        }, icon('close')));
+    }));
+    $('#stop-rail').replaceChildren(el('span', { class: 'rail-dot from' }),
+        ...state.stops.flatMap(() => [el('span', { class: 'rail-line' }), el('span', { class: 'rail-dot stop' })]),
+        el('span', { class: 'rail-line' }), el('span', { class: 'rail-dot to' }));
+    $('#add-stop').hidden = state.stops.length >= MAX_STOPS;
+}
+
+/** Adds a stop before the destination: a point (from the map or a search along the route), or an empty field. */
+function addStop(point = null) {
+    if (state.stops.length >= MAX_STOPS) {
+        toast(`En fazla ${MAX_STOPS} ara durak eklenebilir`, true);
+        return;
+    }
+    state.stops.push(null);
+    renderStopFields();
+    const which = `stop${state.stops.length - 1}`;
+    if (point) setStop(which, point);
+    else $(`#${which}-input`).focus();
+}
+
+function removeStop(index) {
+    const hadPoint = Boolean(state.stops[index]);
+    state.stops.splice(index, 1);
+    renderStopFields();
+    drawStops();
+    if (hadPoint) planRoute();
 }
 
 function swapStops() {
     [state.from, state.to] = [state.to, state.from];
+    state.stops.reverse();
+    renderStopFields();
     $('#from-input').value = state.from?.label ?? '';
     $('#to-input').value = state.to?.label ?? '';
     drawStops();
@@ -717,29 +807,30 @@ function distanceToArea(point) {
 const search = { input: null, results: [], active: -1, request: 0, timer: null };
 
 function setUpSearch() {
-    for (const which of ['from', 'to']) {
-        const input = $(`#${which}-input`);
-        input.addEventListener('input', () => {
-            if (!input.value.trim()) {
-                hideSuggestions();
-                if (state[which]) clearStop(which);
-                return;
-            }
-            clearTimeout(search.timer);
-            search.timer = setTimeout(() => findPlaces(input, which), 180);
-        });
-        input.addEventListener('keydown', (event) => onSearchKey(event, which));
-        input.addEventListener('focus', () => {
-            input.select();
-            const recent = recentPlaces();
-            if (!input.value.trim() && recent.length) {
-                const near = here.position ?? { lat: map.getCenter().lat, lon: map.getCenter().lng };
-                showSuggestions(input, which, recent.map((place) => ({ ...place, name: place.label, recent: true })),
-                    'Son aramalar', near);
-            }
-        });
-        input.addEventListener('blur', () => setTimeout(hideSuggestions, 150));
-    }
+    for (const which of ['from', 'to']) attachSearch($(`#${which}-input`), which);
+}
+
+function attachSearch(input, which) {
+    input.addEventListener('input', () => {
+        if (!input.value.trim()) {
+            hideSuggestions();
+            if (getStop(which)) clearStop(which);
+            return;
+        }
+        clearTimeout(search.timer);
+        search.timer = setTimeout(() => findPlaces(input, which), 180);
+    });
+    input.addEventListener('keydown', (event) => onSearchKey(event, which));
+    input.addEventListener('focus', () => {
+        input.select();
+        const recent = recentPlaces();
+        if (!input.value.trim() && recent.length) {
+            const near = here.position ?? { lat: map.getCenter().lat, lon: map.getCenter().lng };
+            showSuggestions(input, which, recent.map((place) => ({ ...place, name: place.label, recent: true })),
+                'Son aramalar', near);
+        }
+    });
+    input.addEventListener('blur', () => setTimeout(hideSuggestions, 150));
 }
 
 async function findPlaces(input, which) {
@@ -1111,8 +1202,10 @@ async function planRoute() {
     $('#result').classList.add('busy');
     try {
         const departAt = departureTime();
+        const stops = state.stops.filter(Boolean);
         const route = await api.get(`route?from=${coordinate(state.from)}&to=${coordinate(state.to)}`
-            + `&mode=${state.mode}&alternatives=true`
+            + `&mode=${state.mode}&alternatives=${stops.length === 0}`
+            + (stops.length ? `&via=${stops.map(coordinate).join(';')}` : '')
             + (departAt ? `&departAt=${encodeURIComponent(departAt.toISOString())}` : ''));
         if (requestId !== routeRequest) return;
         state.routes = [route, ...route.alternatives];
@@ -1384,6 +1477,10 @@ function routeStats(route) {
     const found = fastest ? '' : route.engine === 'osrm' ? ' Alternatifi de OSRM önerdi.'
         : ' Alternatif, en hızlı rotanın yolları pahalılaştırılıp A* yeniden çalıştırılarak bulundu.';
     const visited = route.visitedNodes.toLocaleString('tr-TR');
+    if (route.engine === 'mixed') {
+        return `${MODES[route.mode]} · ara duraklı rota. Her bacak ayrı hesaplandı; bacaklar farklı motorlarla bulundu `
+            + '(ayrıntılı bölgede kendi A* motorumuz, dışında ulusal grafik ya da OSRM).';
+    }
     if (route.engine === 'national') {
         const graph = state.area?.nationalGraph;
         const taken = graph?.dataTimestamp ? ` (${dayFormat.format(new Date(graph.dataTimestamp))} verisi)` : '';
@@ -2058,6 +2155,10 @@ function announcement(step, level, mode) {
     const thresholds = ANNOUNCE_AT[mode];
     const ahead = spokenDistance(Math.min(thresholds[level], step.gap));
     if (step.maneuver === 'ARRIVE') return level < thresholds.length - 1 ? `${ahead} sonra hedefinize ulaşacaksınız` : null;
+    if (step.maneuver === 'WAYPOINT') {
+        return level < thresholds.length - 1 ? `${ahead} sonra ${lowerFirst(step.text).replace('ulaştınız', 'ulaşacaksınız')}`
+            : step.text;
+    }
     const street = step.street ? `, ${step.street}` : '';
     if (level === thresholds.length - 1) return `Şimdi ${lowerFirst(step.text)}${street}`;
     return `${ahead} sonra ${lowerFirst(step.text)}${street}`;
@@ -2077,8 +2178,14 @@ async function reroute(position) {
     try {
         state.from = { lat: position.lat, lon: position.lon, label: 'Konumum' };
         $('#from-input').value = 'Konumum';
+        // stops already reached are done; the new route goes through the others
+        const along = nav.lastAlong ?? 0;
+        const reached = nav.track.steps.filter((step) => step.maneuver === 'WAYPOINT' && step.along <= along).length;
+        state.stops = state.stops.filter(Boolean).slice(reached);
+        renderStopFields();
         const route = await api.get(`route?from=${coordinate(state.from)}&to=${coordinate(state.to)}`
-            + `&mode=${state.mode}`);
+            + `&mode=${state.mode}`
+            + (state.stops.length ? `&via=${state.stops.map(coordinate).join(';')}` : ''));
         if (state.nav !== nav) return;
         state.routes = [route];
         state.route = route;
@@ -2194,9 +2301,10 @@ function speakNow(item) {
     synth.speak(utterance);
 }
 
-/** The text as it should sound: "3. çıkışa girin" is read "üçüncü çıkışa girin". */
+/** The text as it should sound: "3. çıkışa girin" is read "üçüncü çıkışa girin", "2. ara durağa" "ikinci ara durağa". */
 function spoken(text) {
-    return text.replace(/\b(\d{1,2})\. (?=çıkış)/g, (match, number) => (SPOKEN_ORDINALS[number - 1] ?? match.trim()) + ' ');
+    return text.replace(/\b(\d{1,2})\. (?=çıkış|ara durağ)/g,
+        (match, number) => (SPOKEN_ORDINALS[number - 1] ?? match.trim()) + ' ');
 }
 
 /** Each kind of problem is reported once per visit. */
@@ -2310,6 +2418,8 @@ function writeHash() {
     const parts = [];
     if (state.from) parts.push(`from=${coordinate(state.from)}`);
     if (state.to) parts.push(`to=${coordinate(state.to)}`);
+    const stops = state.stops.filter(Boolean);
+    if (stops.length) parts.push(`via=${stops.map(coordinate).join(';')}`);
     parts.push(`mode=${state.mode}`);
     history.replaceState(null, '', `#${parts.join('&')}`);
 }
@@ -2322,7 +2432,8 @@ function readHash() {
             ? { lat, lon } : null;
     };
     if (MODES[params.get('mode')]) state.mode = params.get('mode');
-    return { from: point(params.get('from')), to: point(params.get('to')) };
+    const stops = (params.get('via') ?? '').split(';').map(point).filter(Boolean).slice(0, MAX_STOPS);
+    return { from: point(params.get('from')), to: point(params.get('to')), stops };
 }
 
 function selectMode(mode) {
@@ -2378,6 +2489,7 @@ function wireUp() {
     });
     $('#install-button').addEventListener('click', installApp);
     $('#intro-install').addEventListener('click', installApp);
+    $('#add-stop').addEventListener('click', () => addStop());
     $('#save-place').addEventListener('click', () => {
         if ($('#save-menu').hidden) openSaveMenu();
         else closeSaveMenu();
@@ -2461,6 +2573,9 @@ async function init() {
     });
     if (fromHash.from) await setStop('from', fromHash.from, { plan: false });
     if (fromHash.to) await setStop('to', fromHash.to, { plan: false });
+    state.stops = fromHash.stops.map(() => null);
+    renderStopFields();
+    for (const [index, stop] of fromHash.stops.entries()) await setStop(`stop${index}`, stop, { plan: false });
     await planRoute();
     // other people may report or clear incidents; keep the picture fresh
     setInterval(() => {
