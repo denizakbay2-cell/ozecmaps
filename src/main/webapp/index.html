@@ -106,6 +106,9 @@
             <button type="button" role="radio" data-mode="foot" aria-checked="false">
                 <span data-icon="foot"></span>Yürüyüş
             </button>
+            <button type="button" role="radio" data-mode="transit" aria-checked="false">
+                <span data-icon="bus"></span>Toplu taşıma
+            </button>
         </div>
 
         <div class="options">
@@ -160,6 +163,7 @@
                 <span id="summary-traffic" class="tag" hidden></span>
                 <span id="summary-engine" class="tag engine"></span>
             </div>
+            <div id="transit-legs" class="transit-legs" aria-label="Yolculuğun bölümleri"></div>
         </div>
         <button id="route-switch" class="route-switch" type="button" hidden
                 title="Haritadaki soluk rotaya dokunarak da geçebilirsiniz">
@@ -176,7 +180,8 @@
                 <span data-icon="navigate"></span>Navigasyonu başlat
             </button>
             <button id="share-arrival" class="icon-button share-button" type="button" data-icon="share"
-                    title="Varış saatini paylaş" aria-label="Varış saatini paylaş"></button>
+                    title="Varış saatini paylaş" aria-label="Varış saatini paylaş"><span
+                    class="share-label">Varış saatini paylaş</span></button>
         </div>
         <div class="along">
             <div class="section-head">
@@ -210,7 +215,7 @@
         Rotalar Java ile yazılmış A* motorumuzla: Kadıköy'de bütün yollarda, Türkiye genelinde araç yollarında.
         Kadıköy dışındaki yürüyüş ve bisiklet rotaları
         <a href="https://routing.openstreetmap.de/about.html" target="_blank" rel="noopener">OSRM (FOSSGIS)</a>,
-        arama <a href="https://photon.komoot.io" target="_blank" rel="noopener">Photon</a> ile. İstanbul trafiği:
+        arama <a href="https://photon.komoot.io" target="_blank" rel="noopener">Photon</a> ile. İstanbul trafiği ve toplu taşıma tarifeleri:
         <a href="https://data.ibb.gov.tr" target="_blank" rel="noopener">İBB Açık Veri Portalı</a> (İBB Açık Veri Lisansı).
     </footer>
 </aside>

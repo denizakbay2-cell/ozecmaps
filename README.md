@@ -21,6 +21,7 @@ Araç rotalarında İstanbul trafiği İBB'nin açık verisinden hesaba katılı
 - **Varış saatini paylaşma:** Rota kartındaki ve navigasyon çubuğundaki paylaş düğmesi "Yoldayım: Sarıgül Sokağı. Tahmini varış 21:22 (14 dk kaldı)." mesajını, hedefi açan bir bağlantıyla telefonun paylaşma menüsüne verir; menü yoksa panoya kopyalar. Bağlantıda yalnızca hedef vardır, sizin konumunuz paylaşılmaz.
 - **Ara durak:** "Ara durak ekle" ile başlangıç ve varış arasına en fazla üç durak eklenir; haritaya dokunup "Durak ekle" de denebilir. Rota durak durak hesaplanır, her bacağın trafiği o bacağın başlayacağı saate göredir. Navigasyon durağa yaklaşınca "200 metre sonra ara durağa ulaşacaksınız" der.
 - **Yol üstünde arama:** Rota kartındaki "Yol üstünde" çipleri rotanın yakınındaki benzinlikleri, şarj istasyonlarını, eczaneleri, marketleri ya da ATM ve bankaları listeler: "2,4 km sonra · sağda, yoldan 40 m · Bağdat Caddesi". Sonuçlar haritada da simgeleriyle görünür. "Durak" düğmesi yeri ara durak yapar ve rotadaki sırasına göre öteki durakların arasına yerleştirir. Türkiye'nin her yerinde çalışır; yerler OpenStreetMap'ten çıkarılıp uygulamayla gelir ([ADR-0012](docs/adr/ADR-0012.md)).
+- **Toplu taşıma:** İstanbul'da vapur, metro, Marmaray, tramvay, füniküler, teleferik, Metrobüs, otobüs, minibüs ve dolmuşla yolculuk planlanır. Örneğin Moda'dan Taksim'e "Tramvay T3 › Dolmuş, 42 dk", Kadıköy'den Beşiktaş'a vapur. Kalkış saatine göre sefer saatleri kullanılır, aktarmalar yürüyerek yapılır. Önerilen yolculuğun yanında daha az aktarmalı ya da trafiğe takılmayan (vapur, raylı sistem, Metrobüs) seçenekler de sunulur. Haritada her araç türü kendi renginde, gerçek güzergâhı üzerinde çizilir. Tarifeler İBB'nin açık GTFS verisinden üretilir ve uygulamayla gelir ([ADR-0013](docs/adr/ADR-0013.md)).
 - **Alternatif rota:** En hızlı rotanın altında, ondan belirgin biçimde farklı ikinci bir rota daha soluk çizilir. İki rotanın süresi haritada küçük etiketlerde yazar. Soluk rotanın herhangi bir yerine dokununca o rotaya geçilir; panelde de "Alternatif rota" satırı vardır ([ADR-0010](docs/adr/ADR-0010.md)).
 - **Trafik:**
   - Araç rotaları İstanbul'da o saatin olağan trafiğini hesaba katar. Bu bilgi İBB'nin iki aylık saatlik yoğunluk verisinden, yaklaşık 2.400 bölge için çıkarıldı.
@@ -79,6 +80,8 @@ scripts/build-national-graph.sh     # ~650 MB indirir, osmium ve Java ile data/t
 ```
 
 Yol üstündeki yerlerin listesi depoyla gelir. Yenilemek için ulusal grafikten sonra `scripts/build-poi-index.sh` çalıştırın; aynı kesiti kullanır.
+
+Toplu taşıma tarifeleri de depoyla gelir. Yenilemek için `scripts/build-transit.sh` çalıştırın: İBB'den yaklaşık 80 MB indirir ve yalnızca Docker ile curl ister.
 
 Betik yalnızca Docker ister. Docker'a en az 4 GB bellek verilmeli; çalışırken 3 GB disk kullanır. `docker compose` dosyayı `data/` klasöründen okur. Uygulama açılışta grafiği yaklaşık 2 saniyede yükler ve toplam 800 MB kadar bellek kullanır. Dosya yoksa uygulama yine çalışır: Kadıköy dışındaki araç rotaları da OSRM'den gelir.
 
@@ -141,6 +144,7 @@ Depodaki [Render Blueprint](render.yaml) dosyası web servisini (Docker, ücrets
 | `GET` | `/api/ping` | Sağlık denetimi: rota grafiği yüklenince 200, yüklenirken 503 |
 | `GET` | `/api/map` | Alanın adı, sınırları, merkezi, düğüm ve parça sayısı, verinin tarihi, ulusal grafik (`nationalGraph`), trafik verisi olan bölge sayısı |
 | `GET` | `/api/route?from=enlem,boylam&to=enlem,boylam&mode=car\|bicycle\|foot&optimize=fastest\|shortest&departAt=2026-11-16T08:00+03:00&alternatives=true` | Rota: `via=enlem,boylam;enlem,boylam` ile en fazla üç ara duraktan geçer (bu durumda alternatif verilmez). Mesafe, süre, geometri, adım adım tarif (durağa varış `WAYPOINT` adımıdır), rotadaki olaylar, `trafficDelaySeconds` ve trafiğin yavaşlattığı kesimler (`traffic`: geometrideki başlangıç ve bitiş noktası ile serbest akış hızının oranı). `engine` hangi motorun hesapladığını söyler: `astar`, `national` ya da `osrm`. `departAt` verilmezse kalkış şimdidir. `alternatives=true` ile, varsa belirgin biçimde farklı ikinci rota aynı biçimde `alternatives` alanında gelir |
+| `GET` | `/api/transit?from=enlem,boylam&to=enlem,boylam&departAt=2026-11-16T08:00+03:00` | İstanbul'da toplu taşımayla yolculuk: ne zaman çıkılacağı, varış, araç sayısı ve bölümler (`legs`). Her bölüm bir yürüyüş (`WALK`) ya da araçla yolculuktur (`FERRY`, `METRO`, `RAIL`, `TRAM`, `BUS`, `METROBUS`, `MINIBUS`, `DOLMUS`…): hat (`M4`, `14M`), yön, biniş ve iniş durağı, saatler ve haritada çizilecek yol. `alternatives` en fazla üç başka seçenek verir |
 | `GET` | `/api/traffic` | İstanbul'un trafik endeksi, bu saatteki olağan değeri, seviyesi ("çok yoğun") ve kıyas ("normalden yoğun") |
 | `GET` | `/api/traffic/roads?minLat=…&minLon=…&maxLat=…&maxLon=…` | Görünümdeki yollar ve şu anki hız katsayıları (1 = serbest akış), en fazla 2.500 yol |
 | `GET` | `/api/places?q=moda&limit=8&lat=…&lon=…` | Yer ve işletme arama; `lat`/`lon` yakındaki sonuçları öne alır. `detail` yerin sokağını ve semtini verir |
@@ -188,6 +192,10 @@ tarayıcı (Leaflet) ◀── JSON ── JAX-RS ◀── servisler ──▶ 
   - Bulunan rota en iyisiyle en fazla %75 ortak olabilir ve en fazla 1,3 kat sürebilir. Fazla benzerse ceza 2,0'a çıkar.
   - Kadıköy'de ek süre birkaç milisaniye, Edirne–Van'da 1,6 saniyedir.
 - **Yol üstünde arama:** Türkiye'deki 74 bin yer türe göre ayrılır ve yaklaşık 2 km'lik ızgara hücrelerinde durur. Arama yalnızca rotanın geçtiği hücrelere bakar ve her yerin rotaya en yakın noktasını bulur. Rota 20 parçaya bölünür, her parçadan yola en yakın yer seçilir. Tarayıcı uzun rotaları göndermeden önce Douglas–Peucker ile en fazla 300 noktaya indirir.
+- **Toplu taşıma:**
+  - İBB'nin iki GTFS veri seti `BuildTransitNetwork` ile düzeltilir ve sıkıştırılır: 20.978 durak, 5.503 desen, 284 bin sefer, 3,6 MB. Tarifeler bellekte yaklaşık 55 MB tutar ve ilk istekte okunur.
+  - Arama RAPTOR ile yapılır: k. tur, en fazla k araçla her durağa en erken varışı bulur. Böylece tek aramada her aktarma sayısı için en iyi yolculuk çıkar. İstanbul genelinde bir arama 10 ms'den kısa sürer.
+  - Otobüs, minibüs ve dolmuş tarifeleri günün her saati için aynı süreyi verir. Bu süreler İBB'nin olağan trafik verisiyle saate göre uzatılır ya da kısaltılır.
 - **Yanıtlar:** Payara JSON'u ve web dosyalarını gzip'le sıkıştırır (`docker/post-boot.asadmin`). `PacedWriter` büyük yanıtları 64 KB'lık parçalarla yazar.
 - **Ses:**
   - Yol tarifini cihazın kendi sesi okur (tarayıcının Web Speech API'si) ve ücretsizdir. Uygulama cihazdaki en doğal Türkçe sesi seçer: adında "Natural", "Premium", "Enhanced" ya da "Gelişmiş" geçen sesler önce gelir.
@@ -224,8 +232,9 @@ Bellek için alanı bir ilçe ya da küçük bir şehir büyüklüğünde tutun 
 ./mvnw verify
 ```
 
-Toplam 258 test var:
+Toplam 282 test var:
 - rota motoru: geometri, grafik, uzamsal indeks, A*, alternatif rota, trafik, tarif üretimi, yol üstündeki yerler,
+- toplu taşıma: GTFS verisini düzeltme, RAPTOR, yolculuk seçimi, uygulamayla gelen tarifelerle gerçek bir yolculuk,
 - gerçek Kadıköy verisi üzerinde A* ile Dijkstra karşılaştırması,
 - ulusal grafik: kavşak sıkıştırma, dosya biçimi, aynı yollarda ayrıntılı motorla aynı en kısa mesafeler,
 - trafik profili, İBB endeks istemcisi, çevrimdışı araçlar,
@@ -244,7 +253,11 @@ JaCoCo raporu `target/site/jacoco/` altında oluşur. Satır kapsamı yaklaşık
 - Trafik yalnızca İstanbul için vardır. Olağan trafik 2024 sonbaharı verisidir. Canlı endeks bütün şehir için tek bir sayıdır, tek bir yoldaki kazayı göstermez.
 - Kadıköy dışındaki yürüyüş ve bisiklet rotaları, ulusal grafik yüklenmemişse araç rotaları ve arama açık servislere bağlıdır. Bu rotalarda yol olayları ve trafik hesaba katılmaz, yalnızca "en hızlı" rota vardır. Servisler yavaşsa ya da yanıt vermiyorsa uygulama bunu söyler.
 - Haritada simgesiyle görünen işletmeler yalnızca ayrıntılı bölgedekilerdir. Diğer şehirlerde işletmeler aramayla bulunur; harita karoları da işletme simgelerini gösterir.
-- Toplu taşıma ve vapur rotası yok. Veri yalnızca içe aktarılan alanı kapsar.
+- Toplu taşıma yalnızca İstanbul'da ve tarifeye göre çalışır; araçların canlı konumu kullanılmaz.
+  - Vapur, metro ve Marmaray tarifeleri İBB'nin 2024'te yayımladığı veridir. O tarihten sonra açılan hatlar ve tarife değişiklikleri görünmez.
+  - Takvim tarihleri kullanılmaz, bu yüzden bayram tarifeleri bilinmez. Ücretler hesaba katılmaz.
+  - Yürüme süreleri kuş uçuşu uzaklıktan tahmin edilir.
+  - Toplu taşımada adım adım sesli navigasyon yoktur.
 - Yol üstündeki yerler bir OpenStreetMap kesitinin anlık görüntüsüdür. Yeni açılan yerler liste yenilenene kadar görünmez. Nöbetçi eczane ve çalışma saati bilgisi yoktur. Rotaya uzaklık kuş uçuşudur: bölünmüş yolun karşısındaki bir yere dönülemeyebilir, bu yüzden yerin rotanın hangi yanında olduğu yazar.
 - Sesin kalitesi cihaza bağlıdır. Mac'teki Chrome Türkçe için yalnızca macOS'un "Yelda" sesini sunar ve bu ses robotik duyulur. Daha doğal bir ses için Mac'te *Sistem Ayarları › Erişilebilirlik › Seslendirilmiş İçerik* bölümünde Sistem Sesi listesinden *Sesleri Yönet…* deyip Türkçe'de Yelda'nın gelişmiş (Enhanced) sürümü indirilebilir; Safari bu sesi kullanır, Chrome listesinde görünürse uygulama onu kendiliğinden seçer. Edge'in Türkçe "Natural" sesleri ve Android'in Google sesleri de doğaldır.
 - Mac'teki Chrome'un konuşma motoru, konuşma tam başlarken kesilirse Chrome yeniden başlatılana kadar bütün sayfalarda susar. Uygulama bu yüzden hiçbir cümleyi kesmez. Motor yine de yanıt vermezse uygulama bunu ekranda söyler; Chrome'u tamamen kapatıp (Cmd+Q) açmak düzeltir.
@@ -266,6 +279,7 @@ JaCoCo raporu `target/site/jacoco/` altında oluşur. Satır kapsamı yaklaşık
 - [Alternatif rota: ceza yöntemi](docs/adr/ADR-0010.md)
 - [Sesli yönlendirme: cihazın kendi sesi](docs/adr/ADR-0011.md)
 - [Yol üstünde arama: uygulamayla gelen yer listesi](docs/adr/ADR-0012.md)
+- [Toplu taşıma: İBB'nin GTFS verisi ve RAPTOR](docs/adr/ADR-0013.md)
 
 ## Teknolojiler
 
@@ -278,6 +292,7 @@ Java 21, Jakarta EE 11 (JAX-RS, CDI, JPA, JSON-P, Bean Validation, JTA) ve Payar
 - Türkiye geneli rotalar [FOSSGIS](https://routing.openstreetmap.de/about.html) sunucularındaki OSRM'den, arama ve adresler [Photon](https://photon.komoot.io)'dan (komoot) gelir. İkisi de OpenStreetMap verisi kullanır. Ayrıntılı bölge dışındaki rotaların başlangıç ve varış noktaları ile arama metinleri bu servislere gönderilir. İstekler kullanım koşullarına uygun olarak sınırlanır ve önbelleğe alınır.
 - Ulusal grafik (`data/turkey-car.graph`) Geofabrik'in OpenStreetMap kesitinden üretilir ve ODbL altındadır. Depoya girmez, betikle üretilir.
 - Yol üstündeki yerlerin listesi (`src/main/resources/pois/turkey-pois.csv.gz`) aynı kesitten üretilir ve ODbL altındadır. Başlığında verinin tarihi ve atıf yazar.
+- Toplu taşıma tarifeleri, İBB Açık Veri Portalı'nın "Toplu Ulaşım GTFS Verisi" ve "İETT GTFS Verisi" veri setlerinden üretilir ([İBB Açık Veri Lisansı](https://data.ibb.gov.tr/license)). Uygulamayla gelen `src/main/resources/transit` dosyası, kaynağını ve alındığı tarihi içinde taşır. Toplu taşıma isteği hiçbir servise gitmez.
 - Trafik verisi [İBB Açık Veri Portalı](https://data.ibb.gov.tr)'ndandır ([İBB Açık Veri Lisansı](https://data.ibb.gov.tr/license)): saatlik trafik yoğunluk veri seti (Ekim–Kasım 2024) ve trafik endeksi. Uygulamayla gelen `src/main/resources/traffic` profili bu veriden üretilmiştir ve kaynağını başlığında belirtir. Endeks isteği kullanıcıya ait hiçbir bilgi taşımaz.
 - Harita altlığı [OpenFreeMap](https://openfreemap.org)'ten gelir (© [OpenMapTiles](https://www.openmaptiles.org/), veri © OpenStreetMap). Anahtar ve kota istemez, atıf ister; atıf haritanın köşesinde durur.
 - Leaflet BSD-2 (`src/main/webapp/assets/vendor/leaflet/LICENSE`), MapLibre GL JS BSD-3 ve maplibre-gl-leaflet ISC lisanslıdır (`src/main/webapp/assets/vendor/maplibre/`). Inter yazı tipi SIL Open Font License 1.1 ile gelir (`src/main/webapp/assets/fonts/OFL.txt`).

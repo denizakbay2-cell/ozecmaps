@@ -168,7 +168,11 @@ public class RouteService {
     }
 
     private Instant departure(Instant requested) {
-        Instant now = clock.instant();
+        return checkedDeparture(requested, clock.instant());
+    }
+
+    /** The departure to plan for: now when none is asked for, otherwise at most a day back and a week ahead. */
+    static Instant checkedDeparture(Instant requested, Instant now) {
         if (requested == null) {
             return now;
         }

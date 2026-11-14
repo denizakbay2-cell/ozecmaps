@@ -3,8 +3,22 @@
 // Map client for the REST API under api/. No framework and no build step; Leaflet draws the map.
 // Every piece of data from the server is inserted as text through el(), never as HTML.
 
-const MODES = { car: 'Araç', bicycle: 'Bisiklet', foot: 'Yürüyüş' };
-const TRAVEL_BY = { car: 'araçla', bicycle: 'bisikletle', foot: 'yürüyerek' };
+const MODES = { car: 'Araç', bicycle: 'Bisiklet', foot: 'Yürüyüş', transit: 'Toplu taşıma' };
+const TRAVEL_BY = { car: 'araçla', bicycle: 'bisikletle', foot: 'yürüyerek', transit: 'toplu taşımayla' };
+/** How each kind of public transport looks on the map and in the journey: its colour and its icon. */
+const TRANSIT_STYLE = {
+    WALK: { color: '#7c8594', icon: 'foot' },
+    FERRY: { color: '#0284c7', icon: 'ferry' },
+    METRO: { color: '#db2777', icon: 'train' },
+    RAIL: { color: '#7c3aed', icon: 'train' },
+    TRAM: { color: '#ea580c', icon: 'train' },
+    FUNICULAR: { color: '#a16207', icon: 'train' },
+    CABLE_CAR: { color: '#a16207', icon: 'train' },
+    BUS: { color: '#16a34a', icon: 'bus' },
+    METROBUS: { color: '#dc2626', icon: 'bus' },
+    MINIBUS: { color: '#ca8a04', icon: 'bus' },
+    DOLMUS: { color: '#0d9488', icon: 'bus' }
+};
 const INCIDENT_COLORS = { ACCIDENT: '#dc2626', ROADWORK: '#ea580c', CONGESTION: '#d97706', CLOSURE: '#7c3aed' };
 const FIELDS = {
     from: 'Başlangıç', to: 'Varış', mode: 'Ulaşım şekli', type: 'Olay türü',
@@ -197,6 +211,7 @@ const ICONS = {
     share: [['path', { d: 'M12 15V3.5M7.5 8 12 3.5 16.5 8M5 12.5V20h14v-7.5' }]],
     plus: [['path', { d: 'M12 5v14M5 12h14' }]],
     bolt: [['path', { d: 'M13 3 5 14h6l-1 7 8-11h-6Z' }]],
+    bus: [['path', { d: 'M6 17V6a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v11ZM6 11h12M8 20v-3M16 20v-3' }]],
     star: [['path', { d: 'M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9Z' }]],
     home: [['path', { d: 'M4 11.5 12 4.5l8 7V20h-5.5v-5.5h-5V20H4Z' }]],
     briefcase: [['rect', { x: 3, y: 7, width: 18, height: 13, rx: 2 }],
@@ -514,7 +529,7 @@ function onMapClick(event) {
     const startHere = el('button', { class: `button small${state.from ? '' : ' primary'}`, type: 'button' },
         'Buradan başla');
     const report = insideArea(point) ? el('button', { class: 'button small ghost', type: 'button' }, 'Olay bildir') : null;
-    const canStop = state.from && state.to && state.stops.length < MAX_STOPS;
+    const canStop = state.from && state.to && state.stops.length < MAX_STOPS && state.mode !== 'transit';
     const stopHere = canStop ? el('button', { class: 'button small', type: 'button' }, 'Durak ekle') : null;
     const popup = L.popup().setLatLng(event.latlng)
         .setContent(el('div', { class: 'popup' }, el('div', { class: 'popup-title' }, 'Seçilen nokta'), street,
@@ -627,7 +642,8 @@ function clearStop(which) {
 
 function drawStops() {
     layers.markers.clearLayers();
-    for (const which of ['from', ...state.stops.map((_, index) => `stop${index}`), 'to']) {
+    const stops = state.mode === 'transit' ? [] : state.stops.map((_, index) => `stop${index}`);
+    for (const which of ['from', ...stops, 'to']) {
         const point = getStop(which);
         if (point) markerFor(which, point).addTo(layers.markers);
     }
@@ -1220,6 +1236,16 @@ async function planRoute() {
     $('#result').classList.add('busy');
     try {
         const departAt = departureTime();
+        if (state.mode === 'transit') {
+            const journey = await api.get(`transit?from=${coordinate(state.from)}&to=${coordinate(state.to)}`
+                + (departAt ? `&departAt=${encodeURIComponent(departAt.toISOString())}` : ''));
+            if (requestId !== routeRequest) return;
+            state.routes = [journey, ...journey.alternatives];
+            state.route = journey;
+            drawTransit(journey, { fit: true });
+            showTransit(journey);
+            return;
+        }
         const stops = state.stops.filter(Boolean);
         const route = await api.get(`route?from=${coordinate(state.from)}&to=${coordinate(state.to)}`
             + `&mode=${state.mode}&alternatives=${stops.length === 0}`
@@ -1424,6 +1450,7 @@ function clearRoute() {
 function showRoute(route, { scroll = true } = {}) {
     $('#home').hidden = true;
     $('#result').hidden = false;
+    $('#result').classList.remove('transit');
     $('#summary-time').textContent = formatDuration(route.durationSeconds);
     $('#summary-distance').textContent = formatDistance(route.distanceMeters);
     const departure = route.departAt ? Date.parse(route.departAt) : Date.now();
@@ -1524,6 +1551,138 @@ function focusStep(step) {
         radius: 9, color: '#2563eb', weight: 3, fillColor: '#ffffff', fillOpacity: 1
     }).addTo(layers.route);
     map.setView([step.lat, step.lon], 17);
+}
+
+/* ---------- journeys by public transport ---------- */
+
+/** Walks dotted, rides in the colour of their kind, an icon where to get on and a ring where to get off. */
+function drawTransit(journey, { fit }) {
+    layers.route.clearLayers();
+    for (const leg of journey.legs) {
+        const style = TRANSIT_STYLE[leg.kind] ?? TRANSIT_STYLE.BUS;
+        if (leg.kind === 'WALK') {
+            L.polyline(leg.geometry, {
+                color: style.color, weight: 5, dashArray: '1 10', lineCap: 'round', interactive: false
+            }).addTo(layers.route);
+            continue;
+        }
+        L.polyline(leg.geometry, {
+            color: '#ffffff', weight: 10, opacity: 0.85, lineCap: 'round', lineJoin: 'round', interactive: false
+        }).addTo(layers.route);
+        L.polyline(leg.geometry, {
+            color: style.color, weight: 6, lineCap: 'round', lineJoin: 'round', interactive: false
+        }).addTo(layers.route);
+        L.circleMarker(leg.geometry.at(-1), {
+            radius: 6, color: style.color, weight: 3, fillColor: '#ffffff', fillOpacity: 1, interactive: false
+        }).addTo(layers.route);
+        L.marker(leg.geometry[0], {
+            keyboard: false,
+            title: `${legName(leg)} · ${leg.from}`,
+            icon: L.divIcon({
+                className: '',
+                html: el('div', { class: 'marker-transit', style: `background:${style.color}` }, icon(style.icon)),
+                iconSize: [26, 26],
+                iconAnchor: [13, 13]
+            })
+        }).bindTooltip(`${legName(leg)} · ${leg.from}`, { direction: 'top', offset: [0, -14] }).addTo(layers.route);
+    }
+    if (fit) map.fitBounds(L.latLngBounds(journey.legs.flatMap((leg) => leg.geometry)), panelPadding());
+}
+
+/** "Metro M4", "Otobüs 14M", "Vapur", "Marmaray". */
+function legName(leg) {
+    return leg.line && leg.line !== leg.label ? `${leg.label} ${leg.line}` : leg.label;
+}
+
+/** "Aktarmasız", "1 aktarma", or walking all the way. */
+function changesText(journey) {
+    if (journey.rides === 0) return 'Yürüyerek';
+    return journey.rides === 1 ? 'Aktarmasız' : `${journey.rides - 1} aktarma`;
+}
+
+function showTransit(journey, { scroll = true } = {}) {
+    $('#home').hidden = true;
+    const result = $('#result');
+    result.hidden = false;
+    result.classList.add('transit');
+    $('#summary-time').textContent = formatDuration(journey.durationSeconds);
+    $('#summary-distance').textContent = changesText(journey);
+    $('#summary-arrival').textContent = `${clockFormat.format(new Date(journey.departAt))} → `
+        + clockFormat.format(new Date(journey.arriveAt));
+    $('#summary-traffic').hidden = true;
+    const choice = $('#summary-choice');
+    choice.hidden = state.routes.length < 2;
+    choice.className = `tag ${journey === state.routes[0] ? 'clear' : 'alternative'}`;
+    choice.textContent = journey === state.routes[0] ? 'Önerilen' : 'Diğer seçenek';
+    $('#summary-engine').textContent = 'Toplu taşıma · İBB tarifeleri';
+    $('#transit-legs').replaceChildren(...journey.legs.flatMap((leg, index) => [
+        index > 0 ? el('span', { class: 'leg-arrow', 'aria-hidden': 'true' }, '›') : null,
+        leg.kind === 'WALK'
+            ? el('span', { class: 'leg-chip walk', title: `Yürüyüş, ${formatDistance(leg.distanceMeters)}` },
+                icon('foot'), formatDuration(leg.durationSeconds))
+            : el('span', { class: 'leg-chip', style: `background:${TRANSIT_STYLE[leg.kind]?.color}`,
+                title: `${legName(leg)} · ${leg.lineName ?? ''}` },
+            icon(TRANSIT_STYLE[leg.kind]?.icon ?? 'bus'), leg.line ?? leg.label)
+    ]).filter(Boolean));
+    showOtherJourney(journey);
+    $('#route-warnings').replaceChildren();
+    $('#steps-count').textContent = `${journey.legs.length} adım`;
+    $('#steps').replaceChildren(...journey.legs.map((leg) => transitStep(leg)), el('li', {},
+        el('span', { class: 'step-icon' }, icon('arrive')),
+        el('span', {}, el('span', { class: 'step-text' }, 'Varış')),
+        el('span', { class: 'step-distance' }, clockFormat.format(new Date(journey.arriveAt)))));
+    $('#route-stats').textContent = `Tarifeler: ${journey.source}. Saatler haftalık düzene göredir; gerçek kalkışlar `
+        + 'birkaç dakika farklı olabilir.';
+    if (scroll && phoneLayout.matches) {
+        const panel = $('#panel');
+        panel.scrollTo({ top: result.offsetTop - 12, behavior: reducedMotion.matches ? 'auto' : 'smooth' });
+    }
+    searchAlong();
+}
+
+/** A walk or a ride as a step of the directions; a tap shows where it starts. */
+function transitStep(leg) {
+    const walk = leg.kind === 'WALK';
+    const text = walk
+        ? (leg.to ? `${leg.to} durağına yürüyün` : 'Varış noktasına yürüyün')
+        : `${clockFormat.format(new Date(leg.departAt))} ${legName(leg)}`
+            + (leg.headsign ? ` · ${leg.headsign} yönü` : '');
+    const detail = walk
+        ? formatDistance(leg.distanceMeters)
+        : `${leg.from} → ${leg.to} · ${leg.stops} durak` + (leg.lineName ? ` · ${leg.lineName}` : '');
+    const start = { lat: leg.geometry[0][0], lon: leg.geometry[0][1] };
+    return el('li', {
+        tabindex: '0',
+        onclick: () => focusStep(start),
+        onkeydown: (event) => {
+            if (event.key === 'Enter') focusStep(start);
+        }
+    },
+    el('span', { class: 'step-icon', style: walk ? null : `background:${TRANSIT_STYLE[leg.kind]?.color};color:#fff` },
+        icon(TRANSIT_STYLE[leg.kind]?.icon ?? 'bus')),
+    el('span', {}, el('span', { class: 'step-text' }, text), el('span', { class: 'step-street' }, detail)),
+    el('span', { class: 'step-distance' }, formatDuration(leg.durationSeconds)));
+}
+
+/** The next of the offered journeys, one tap away: faster with more changes, or with fewer changes. */
+function showOtherJourney(journey) {
+    const button = $('#route-switch');
+    const index = state.routes.indexOf(journey);
+    const other = state.routes.length > 1 ? state.routes[(index + 1) % state.routes.length] : null;
+    button.hidden = !other;
+    if (!other) return;
+    const delta = other.arriveAt && journey.arriveAt ? (Date.parse(other.arriveAt) - Date.parse(journey.arriveAt)) / 1000
+        : 0;
+    const compared = Math.abs(delta) < 60 ? 'aynı saatte varır'
+        : `${formatDuration(Math.abs(delta))} ${delta > 0 ? 'sonra' : 'önce'} varır`;
+    $('#switch-title').textContent = `${changesText(other)} · ${formatDuration(other.durationSeconds)}`;
+    $('#switch-detail').textContent = `${other.legs.filter((leg) => leg.kind !== 'WALK').map(legName).join(' › ')
+        || 'Yürüyüş'} · ${compared}`;
+    button.onclick = () => {
+        state.route = other;
+        drawTransit(other, { fit: true });
+        showTransit(other, { scroll: false });
+    };
 }
 
 /* ---------- places along the route ---------- */
@@ -2128,7 +2287,7 @@ function pointAlongTrack(track, distance) {
 }
 
 function startNavigation() {
-    if (!state.route) return;
+    if (!state.route || state.route.mode === 'transit') return;
     const nav = state.nav = {
         /** Whether the map follows the arrow; dragging the map stops it, "Konumuma odaklan" starts it again. */
         follow: true,
@@ -2689,9 +2848,16 @@ function readHash() {
 }
 
 function selectMode(mode) {
+    const changed = state.mode !== mode;
     state.mode = mode;
     for (const button of document.querySelectorAll('.modes button')) {
         button.setAttribute('aria-checked', String(button.dataset.mode === mode));
+    }
+    // a journey by public transport goes straight to the destination; the stops wait for the other modes
+    document.body.classList.toggle('transit-mode', mode === 'transit');
+    if (layers.markers) drawStops();
+    if (changed && mode === 'transit' && state.stops.some(Boolean)) {
+        toast('Toplu taşımada ara duraklar kullanılmaz; diğer ulaşım şekillerinde yerinde duruyorlar');
     }
 }
 
