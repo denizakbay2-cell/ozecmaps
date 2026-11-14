@@ -45,6 +45,12 @@ const LOOK_AHEAD_SHARE = 0.25;
 const TRAFFIC_LEVELS = { 'akıcı': 'free', normal: 'normal', 'yoğun': 'busy', 'çok yoğun': 'jammed' };
 const INTRO_KEY = 'city-navigator.intro';
 const RECENT_KEY = 'city-navigator.recent';
+/** Home, work and saved places, kept on this device: { home, work, places }. */
+const FAVORITES_KEY = 'city-navigator.favorites';
+const MAX_FAVORITES = 20;
+/** Two points this close are the same saved place (m). */
+const SAME_PLACE_METERS = 40;
+const SHORTCUTS = { home: { label: 'Ev', icon: 'home' }, work: { label: 'İş', icon: 'briefcase' } };
 const MAX_RECENT = 6;
 /** Vector basemaps of OpenFreeMap (no key, no limits; attribution required), light and dark. */
 const BASEMAP_STYLES = {
@@ -164,7 +170,11 @@ const ICONS = {
     city: [['path', { d: 'M3 21h18M5 21V9l5-3v15M10 21V4h9v17' }], ['path', { d: 'M13 8h3M13 12h3M13 16h3' }]],
     road: [['path', { d: 'M6 21 9 3M18 21 15 3M12 5v2M12 11v2M12 17v2' }]],
     school: [['path', { d: 'M2.5 9.5 12 5l9.5 4.5L12 14Z' }], ['path', { d: 'M6.5 11.5V16c3.5 2.5 7.5 2.5 11 0v-4.5M21.5 9.5V15' }]],
-    expand: [['path', { d: 'm6 15 6-6 6 6' }]]
+    expand: [['path', { d: 'm6 15 6-6 6 6' }]],
+    star: [['path', { d: 'M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9Z' }]],
+    home: [['path', { d: 'M4 11.5 12 4.5l8 7V20h-5.5v-5.5h-5V20H4Z' }]],
+    briefcase: [['rect', { x: 3, y: 7, width: 18, height: 13, rx: 2 }],
+        ['path', { d: 'M8.5 7V5.5A1.5 1.5 0 0 1 10 4h4a1.5 1.5 0 0 1 1.5 1.5V7M3 12.5h18' }]]
 };
 
 const MANEUVER_ICONS = {
@@ -535,6 +545,10 @@ async function setStop(which, point, { plan = true } = {}) {
     const input = $(`#${which}-input`);
     input.value = point.label ?? 'Seçilen nokta';
     drawStops();
+    if (which === 'to') {
+        if (pendingShortcut) saveShortcut(pendingShortcut, point);
+        updateSaveButton();
+    }
     if (!point.label) {
         streetName(point).then((name) => {
             if (state[which] !== point) return;
@@ -548,6 +562,7 @@ async function setStop(which, point, { plan = true } = {}) {
 function clearStop(which) {
     state[which] = null;
     drawStops();
+    if (which === 'to') updateSaveButton();
     clearRoute();
     writeHash();
 }
@@ -914,6 +929,170 @@ function renderRecent() {
     el('span', { class: 'place-text' }, el('strong', {}, place.label),
         placeDescription({ ...place, recent: true }) ? el('span', {}, placeDescription({ ...place, recent: true }))
             : null))));
+}
+
+/* ---------- home, work and saved places ---------- */
+
+/** Ev or İş while the user picks its place: the next destination chosen is saved as it. */
+let pendingShortcut = null;
+
+function favorites() {
+    const valid = (place) => place && typeof place.label === 'string' && Number.isFinite(place.lat)
+        && Number.isFinite(place.lon);
+    try {
+        const saved = JSON.parse(stored(FAVORITES_KEY) ?? '{}') ?? {};
+        return {
+            home: valid(saved.home) ? saved.home : null,
+            work: valid(saved.work) ? saved.work : null,
+            places: Array.isArray(saved.places) ? saved.places.filter(valid) : []
+        };
+    } catch {
+        return { home: null, work: null, places: [] };
+    }
+}
+
+function storeFavorites(next) {
+    store(FAVORITES_KEY, JSON.stringify(next));
+    renderShortcuts();
+    renderFavorites();
+    updateSaveButton();
+}
+
+/** What a stop is saved as: its name, with the street of a point picked on the map looked up first. */
+async function savedPlace(point) {
+    const label = point.label && point.label !== 'Seçilen nokta' ? point.label
+        : (await streetName(point)) ?? 'Kaydedilen yer';
+    return { label, lat: point.lat, lon: point.lon };
+}
+
+async function saveShortcut(which, point) {
+    pendingShortcut = null;
+    $('#to-input').placeholder = 'Nereye gidiyorsunuz?';
+    const place = await savedPlace(point);
+    storeFavorites({ ...favorites(), [which]: place });
+    toast(`${SHORTCUTS[which].label} kaydedildi: ${place.label}`);
+}
+
+/** Which of Ev, İş and the saved places a point is. */
+function savedAs(point) {
+    if (!point) return [];
+    const saved = favorites();
+    const same = (place) => place && distanceMeters(place, point) < SAME_PLACE_METERS;
+    return [...['home', 'work'].filter((which) => same(saved[which])),
+        ...(saved.places.some(same) ? ['place'] : [])];
+}
+
+function renderShortcuts() {
+    const saved = favorites();
+    $('#shortcuts').replaceChildren(...Object.entries(SHORTCUTS).map(([which, shortcut]) => {
+        const place = saved[which];
+        return el('button', {
+            class: `shortcut${place ? '' : ' unset'}`,
+            type: 'button',
+            title: place ? `${shortcut.label}: ${place.label}` : `${shortcut.label} adresini ayarlayın`,
+            onclick: () => useShortcut(which)
+        }, el('span', { class: 'shortcut-icon' }, icon(shortcut.icon)),
+        el('span', { class: 'shortcut-text' }, el('strong', {}, shortcut.label),
+            el('span', {}, place ? place.label : 'Dokunup seçin')));
+    }));
+}
+
+/** One tap: a route to Ev or İş, or, if it is not set yet, picking its place. */
+function useShortcut(which) {
+    const place = favorites()[which];
+    if (place) {
+        goTo({ ...place, icon: SHORTCUTS[which].icon });
+        return;
+    }
+    pendingShortcut = which;
+    const input = $('#to-input');
+    input.placeholder = `${SHORTCUTS[which].label} adresini arayın…`;
+    input.value = '';
+    input.focus();
+    toast(`${SHORTCUTS[which].label} için bir yer arayın ya da haritada dokunup "Buraya git"i seçin`);
+}
+
+function renderFavorites() {
+    const places = favorites().places;
+    $('#favorites-block').hidden = places.length === 0;
+    $('#favorites-list').replaceChildren(...places.map((place) => el('li', {
+        tabindex: '0',
+        role: 'button',
+        onclick: () => goTo(place),
+        onkeydown: (event) => {
+            if (event.key === 'Enter') goTo(place);
+        }
+    }, el('span', { class: 'place-icon saved' }, icon('star')),
+    el('span', { class: 'place-text' }, el('strong', {}, place.label),
+        place.detail ? el('span', {}, place.detail) : null),
+    el('button', {
+        class: 'icon-button plain small-remove',
+        type: 'button',
+        title: 'Kaydedilenlerden çıkar',
+        'aria-label': `${place.label}: kaydedilenlerden çıkar`,
+        onclick: (event) => {
+            event.stopPropagation();
+            unsave('place', place);
+        }
+    }, icon('close')))));
+}
+
+function unsave(kind, point) {
+    const saved = favorites();
+    if (kind === 'place') {
+        saved.places = saved.places.filter((place) => distanceMeters(place, point) >= SAME_PLACE_METERS);
+    } else {
+        saved[kind] = null;
+    }
+    storeFavorites(saved);
+}
+
+/** The star in the destination field: filled when the destination is saved. */
+function updateSaveButton() {
+    const button = $('#save-place');
+    button.hidden = !state.to;
+    closeSaveMenu();
+    const saved = savedAs(state.to).length > 0;
+    button.classList.toggle('saved', saved);
+    button.title = saved ? 'Kaydedildi: değiştirmek için dokunun' : 'Bu yeri kaydet';
+}
+
+function openSaveMenu() {
+    if (!state.to) return;
+    const kinds = savedAs(state.to);
+    const item = (iconName, text, action) => el('button', {
+        type: 'button',
+        role: 'menuitem',
+        onclick: async () => {
+            closeSaveMenu();
+            await action();
+        }
+    }, icon(iconName), text);
+    const toggle = async (kind) => {
+        if (kinds.includes(kind)) {
+            unsave(kind, state.to);
+            toast(kind === 'place' ? 'Kaydedilenlerden çıkarıldı' : `${SHORTCUTS[kind].label} kaydı kaldırıldı`);
+        } else if (kind === 'place') {
+            const place = await savedPlace(state.to);
+            const saved = favorites();
+            storeFavorites({ ...saved, places: [place, ...saved.places].slice(0, MAX_FAVORITES) });
+            toast(`Kaydedildi: ${place.label}`);
+        } else {
+            await saveShortcut(kind, state.to);
+        }
+    };
+    $('#save-menu').replaceChildren(
+        item('star', kinds.includes('place') ? 'Kaydedilenlerden çıkar' : 'Kaydedilenlere ekle', () => toggle('place')),
+        item('home', kinds.includes('home') ? 'Ev kaydını kaldır' : 'Ev olarak kaydet', () => toggle('home')),
+        item('briefcase', kinds.includes('work') ? 'İş kaydını kaldır' : 'İş olarak kaydet', () => toggle('work')));
+    $('#save-menu').hidden = false;
+    $('#save-place').setAttribute('aria-expanded', 'true');
+    $('#save-menu').querySelector('button').focus();
+}
+
+function closeSaveMenu() {
+    $('#save-menu').hidden = true;
+    $('#save-place').setAttribute('aria-expanded', 'false');
 }
 
 /* ---------- routes ---------- */
@@ -2159,6 +2338,13 @@ function wireUp() {
     });
     $('#install-button').addEventListener('click', installApp);
     $('#intro-install').addEventListener('click', installApp);
+    $('#save-place').addEventListener('click', () => {
+        if ($('#save-menu').hidden) openSaveMenu();
+        else closeSaveMenu();
+    });
+    document.addEventListener('click', (event) => {
+        if (!event.target.closest('#save-menu, #save-place')) closeSaveMenu();
+    });
     $('#clear-recent').addEventListener('click', () => {
         store(RECENT_KEY, null);
         renderRecent();
@@ -2184,10 +2370,20 @@ function wireUp() {
     document.addEventListener('keydown', (event) => {
         if (event.key === 'Escape' && state.picking) stopPicking();
         if (event.key === 'Escape' && !$('#intro').hidden) hideIntro();
+        if (event.key === 'Escape' && !$('#save-menu').hidden) {
+            closeSaveMenu();
+            $('#save-place').focus();
+        }
+        if (event.key === 'Escape' && pendingShortcut) {
+            pendingShortcut = null;
+            $('#to-input').placeholder = 'Nereye gidiyorsunuz?';
+        }
     });
     setUpSearch();
     setUpSheet();
     setUpInstall();
+    renderShortcuts();
+    renderFavorites();
     renderQuickDestinations();
     renderRecent();
     updateAdminButton();
