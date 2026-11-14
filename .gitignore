@@ -1,0 +1,23 @@
+# Build output
+target/
+
+# Local secrets (copy .env.example to .env)
+.env
+.env.*
+!.env.example
+
+# IDEs
+.idea/
+*.iml
+.vscode/
+nbproject/private/
+.settings/
+.project
+.classpath
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Large generated data (OpenStreetMap extracts, national graph, traffic downloads)
+data/

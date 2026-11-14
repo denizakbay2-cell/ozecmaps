@@ -1,0 +1,11 @@
+target/
+.git/
+.github/
+.idea/
+.vscode/
+nbproject/
+*.iml
+.env
+.env.*
+docs/
+data/
