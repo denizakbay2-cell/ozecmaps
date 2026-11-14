@@ -55,17 +55,19 @@ class ResourcesTest {
     void routeParsesCoordinatesModeAndOptimisation() {
         RouteResponse planned = new RouteResponse("foot", "shortest", "astar", 1, 1, null, 0L, null, null,
                 List.of(), List.of(), List.of(), List.of(), 1, List.of());
-        when(routes.plan(new GeoPoint(40.99, 29.02), new GeoPoint(40.98, 29.03), TravelMode.FOOT,
+        when(routes.plan(new GeoPoint(40.99, 29.02), List.of(), new GeoPoint(40.98, 29.03), TravelMode.FOOT,
                 Optimization.SHORTEST, null, false)).thenReturn(planned);
         Instant evening = Instant.parse("2026-11-14T15:00:00Z");
-        when(routes.plan(new GeoPoint(40.99, 29.02), new GeoPoint(40.98, 29.03), TravelMode.CAR,
-                Optimization.FASTEST, evening, true)).thenReturn(planned);
+        when(routes.plan(new GeoPoint(40.99, 29.02), List.of(new GeoPoint(40.985, 29.025), new GeoPoint(40.97, 29.04)),
+                new GeoPoint(40.98, 29.03), TravelMode.CAR, Optimization.FASTEST, evening, true)).thenReturn(planned);
 
         RouteResource resource = new RouteResource(routes);
-        assertThat(resource.route(" 40.99, 29.02", "40.98,29.03", "foot", "shortest", null, "false"))
+        assertThat(resource.route(" 40.99, 29.02", "40.98,29.03", "foot", "shortest", null, "false", null))
                 .isSameAs(planned);
-        assertThat(resource.route("40.99,29.02", "40.98,29.03", "car", "fastest", "2026-11-14T18:00+03:00", "true"))
-                .isSameAs(planned);
+        assertThat(resource.route("40.99,29.02", "40.98,29.03", "car", "fastest", "2026-11-14T18:00+03:00", "true",
+                "40.985,29.025; 40.97,29.04")).isSameAs(planned);
+        assertThat("40.1,29.1;40.2,29.2;40.3,29.3".matches(RouteResource.STOPS_PATTERN)).isTrue();
+        assertThat("40.1,29.1;40.2,29.2;40.3,29.3;40.4,29.4".matches(RouteResource.STOPS_PATTERN)).isFalse();
     }
 
     @Test
@@ -95,7 +97,7 @@ class ResourcesTest {
     @Test
     void coordinatesOutOfRangeAreABadRequest() {
         RouteResource resource = new RouteResource(routes);
-        assertThatThrownBy(() -> resource.route("95,29", "40.98,29.03", "car", "fastest", null, "false"))
+        assertThatThrownBy(() -> resource.route("95,29", "40.98,29.03", "car", "fastest", null, "false", null))
                 .isInstanceOf(BadRequestException.class).hasMessage("from: geçerli bir koordinat değil");
         assertThat("40.9903,29.0230".matches(Coordinates.PATTERN)).isTrue();
         assertThat("-1.5, -170".matches(Coordinates.PATTERN)).isTrue();
