@@ -25,6 +25,7 @@ import com.citynavigator.service.PlaceService;
 import com.citynavigator.service.RouteService;
 import com.citynavigator.service.RoutingEngine;
 import com.citynavigator.service.TrafficService;
+import com.citynavigator.service.TransitService;
 import jakarta.ws.rs.BadRequestException;
 import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.UriBuilder;
@@ -52,6 +53,8 @@ class ResourcesTest {
     private MapService maps;
     @Mock
     private TrafficService traffic;
+    @Mock
+    private TransitService transit;
     @Mock
     private UriInfo uriInfo;
 
@@ -133,6 +136,19 @@ class ResourcesTest {
         verify(places).get(12);
         resource.along("pharmacy", "foot", "_ulyF_oxpD");
         verify(along).along(RoadsidePlace.Kind.PHARMACY, TravelMode.FOOT, "_ulyF_oxpD");
+    }
+
+    @Test
+    void transitParsesThePointsAndTheDeparture() {
+        TransitResource resource = new TransitResource(transit);
+
+        resource.plan("40.99,29.02", "41.04,29.00", "2026-11-16T08:00+03:00");
+        resource.plan("40.99,29.02", "41.04,29.00", null);
+
+        verify(transit).plan(new GeoPoint(40.99, 29.02), new GeoPoint(41.04, 29.0),
+                Instant.parse("2026-11-16T05:00:00Z"));
+        verify(transit).plan(new GeoPoint(40.99, 29.02), new GeoPoint(41.04, 29.0), null);
+        assertThatThrownBy(() -> resource.plan("95,29", "41.04,29.00", null)).isInstanceOf(BadRequestException.class);
     }
 
     @Test
