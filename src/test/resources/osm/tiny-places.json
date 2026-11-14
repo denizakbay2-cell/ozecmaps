@@ -1,0 +1,11 @@
+{
+  "version": 0.6,
+  "elements": [
+    {"type": "node", "id": 1, "lat": 40.9913, "lon": 29.0230, "tags": {"name": "Kadıköy İskelesi", "amenity": "ferry_terminal"}},
+    {"type": "way", "id": 2, "center": {"lat": 40.9820, "lon": 29.0250}, "tags": {"name": "Moda Parkı", "leisure": "park"}},
+    {"type": "node", "id": 3, "lat": 40.9850, "lon": 29.0300, "tags": {"name": "Bir Kafe", "amenity": "cafe"}},
+    {"type": "node", "id": 4, "lat": 40.9851, "lon": 29.0301, "tags": {"amenity": "pharmacy"}},
+    {"type": "relation", "id": 5, "tags": {"name": "Merkezsiz", "place": "suburb"}},
+    {"type": "node", "id": 6, "lat": 40.9870, "lon": 29.0360, "tags": {"name": "Moda", "place": "neighbourhood"}}
+  ]
+}

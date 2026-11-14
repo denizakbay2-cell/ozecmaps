@@ -1,0 +1,19 @@
+{
+  "version": 0.6,
+  "generator": "Overpass API test",
+  "osm3s": {"timestamp_osm_base": "2026-11-14T10:58:36Z", "copyright": "ODbL"},
+  "elements": [
+    {"type": "way", "id": 10, "nodes": [1, 2, 2, 3], "tags": {"highway": "residential", "name": "Moda Caddesi", "oneway": "yes", "maxspeed": "30"}},
+    {"type": "way", "id": 11, "nodes": [3, 4], "tags": {"highway": "footway"}},
+    {"type": "way", "id": 12, "nodes": [4, 5], "tags": {"building": "yes"}},
+    {"type": "way", "id": 13, "nodes": [4, 99], "tags": {"highway": "service"}},
+    {"type": "way", "id": 14, "nodes": [5, 5], "tags": {"highway": "residential"}},
+    {"type": "relation", "id": 20, "tags": {"type": "restriction"}},
+    {"type": "node", "id": 1, "lat": 40.9900, "lon": 29.0200},
+    {"type": "node", "id": 2, "lat": 40.9905, "lon": 29.0205},
+    {"type": "node", "id": 3, "lat": 40.9910, "lon": 29.0210},
+    {"type": "node", "id": 4, "lat": 40.9915, "lon": 29.0215},
+    {"type": "node", "id": 5, "lat": 40.9920, "lon": 29.0220},
+    {"type": "node", "id": 6, "lat": 40.9925, "lon": 29.0225}
+  ]
+}

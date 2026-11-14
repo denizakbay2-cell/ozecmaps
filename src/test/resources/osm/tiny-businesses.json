@@ -1,0 +1,10 @@
+{"version":0.6,"elements":[
+ {"type":"node","id":11,"lat":40.9900,"lon":29.0270,"tags":{"name":"Kahve Durağı","amenity":"cafe","opening_hours":"Mo-Su 08:00-23:00","phone":"+90 216 555 11 22; +90 532 000 00 00","website":"https://kahve.example"}},
+ {"type":"node","id":12,"lat":40.9901,"lon":29.0271,"tags":{"name":"Migros","shop":"supermarket","website":"javascript:alert(1)"}},
+ {"type":"node","id":13,"lat":40.9930,"lon":29.0290,"tags":{"name":"Migros","shop":"supermarket"}},
+ {"type":"node","id":14,"lat":40.9902,"lon":29.0272,"tags":{"name":"Plak Dükkanı","shop":"music"}},
+ {"type":"node","id":15,"lat":40.9903,"lon":29.0273,"tags":{"name":"Ahşap Atölyesi","craft":"carpenter"}},
+ {"type":"node","id":16,"lat":40.9904,"lon":29.0274,"tags":{"name":"Belediye","amenity":"townhall"}},
+ {"type":"way","id":17,"center":{"lat":40.9905,"lon":29.0275},"tags":{"name":"Otel Moda","tourism":"hotel"}},
+ {"type":"node","id":18,"lat":40.9906,"lon":29.0276,"tags":{"shop":"bakery"}}
+]}
