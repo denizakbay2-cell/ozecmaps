@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<persistence xmlns="https://jakarta.ee/xml/ns/persistence"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xsi:schemaLocation="https://jakarta.ee/xml/ns/persistence https://jakarta.ee/xml/ns/persistence/persistence_3_2.xsd"
+             version="3.2">
+
+    <persistence-unit name="navigatorPU" transaction-type="JTA">
+        <!-- see com.citynavigator.DataSourceConfig -->
+        <jta-data-source>java:app/jdbc/cityNavigator</jta-data-source>
+        <exclude-unlisted-classes>false</exclude-unlisted-classes>
+        <!-- no second-level cache: what a transaction reads is what is in the database -->
+        <shared-cache-mode>NONE</shared-cache-mode>
+        <properties>
+            <!-- Flyway owns the schema (db/migration); JPA never creates or alters tables -->
+            <property name="jakarta.persistence.schema-generation.database.action" value="none"/>
+            <!-- inserts of the place import go out in JDBC batches -->
+            <property name="eclipselink.jdbc.batch-writing" value="JDBC"/>
+            <property name="eclipselink.jdbc.batch-writing.size" value="500"/>
+        </properties>
+    </persistence-unit>
+</persistence>
