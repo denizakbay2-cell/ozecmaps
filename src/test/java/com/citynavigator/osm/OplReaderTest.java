@@ -45,6 +45,36 @@ class OplReaderTest {
     }
 
     @Test
+    void reportsTheTagsOfNodesThatHaveThemAfterTheNodeItself() throws IOException {
+        String opl = """
+                n1 v1 dV T x29.0 y41.0
+                n2 v1 dV Tamenity=pharmacy,name=Moda%20%Eczanesi x29.03 y40.98
+                n3 Tamenity=fuel x y
+                """;
+        List<String> seen = new ArrayList<>();
+
+        OplReader.read(new BufferedReader(new StringReader(opl)), new OplReader.Handler() {
+            @Override
+            public void node(long id, double lat, double lon) {
+                seen.add("node " + id);
+            }
+
+            @Override
+            public void way(long id, Map<String, String> tags, long[] nodes) {
+                seen.add("way " + id);
+            }
+
+            @Override
+            public void taggedNode(long id, double lat, double lon, Map<String, String> tags) {
+                seen.add("tagged " + id + " " + lat + " " + lon + " " + new java.util.TreeMap<>(tags));
+            }
+        });
+
+        assertThat(seen).containsExactly("node 1", "node 2",
+                "tagged 2 40.98 29.03 {amenity=pharmacy, name=Moda Eczanesi}");
+    }
+
+    @Test
     void unescapesHexCodesAndLeavesPlainTextAlone() {
         assertThat(OplReader.unescape("Kad%131%k%f6%y")).isEqualTo("Kadıköy");
         assertThat(OplReader.unescape("a%2c%b%3d%c")).isEqualTo("a,b=c");

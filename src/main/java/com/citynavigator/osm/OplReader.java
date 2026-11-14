@@ -26,6 +26,14 @@ public final class OplReader {
         void node(long id, double lat, double lon);
 
         void way(long id, Map<String, String> tags, long[] nodes);
+
+        /**
+         * A node that carries tags, such as a pharmacy or a fuel station; called after {@link #node}. Road networks
+         * do not need it.
+         */
+        default void taggedNode(long id, double lat, double lon, Map<String, String> tags) {
+            // nothing by default
+        }
     }
 
     public static void read(BufferedReader reader, Handler handler) throws IOException {
@@ -46,14 +54,32 @@ public final class OplReader {
 
     static void node(String line, Handler handler) {
         long id = Long.parseLong(line, 1, fieldEnd(line, 1), 10);
-        int x = line.indexOf(" x");
-        int y = line.indexOf(" y");
-        if (x < 0 || y < 0) {
+        double lat = Double.NaN;
+        double lon = Double.NaN;
+        Map<String, String> tags = Map.of();
+        int position = fieldEnd(line, 1);
+        while (position < line.length()) {
+            int start = position + 1;
+            int end = fieldEnd(line, start);
+            if (start + 1 < end || start < end && line.charAt(start) == 'T') {
+                switch (line.charAt(start)) {
+                    case 'x' -> lon = Double.parseDouble(line.substring(start + 1, end));
+                    case 'y' -> lat = Double.parseDouble(line.substring(start + 1, end));
+                    case 'T' -> tags = tags(line, start + 1, end);
+                    default -> {
+                        // version, timestamp and the like are not needed
+                    }
+                }
+            }
+            position = end;
+        }
+        if (Double.isNaN(lat) || Double.isNaN(lon)) {
             return;
         }
-        double lon = Double.parseDouble(line.substring(x + 2, fieldEnd(line, x + 2)));
-        double lat = Double.parseDouble(line.substring(y + 2, fieldEnd(line, y + 2)));
         handler.node(id, lat, lon);
+        if (!tags.isEmpty()) {
+            handler.taggedNode(id, lat, lon, tags);
+        }
     }
 
     static void way(String line, Handler handler) {
