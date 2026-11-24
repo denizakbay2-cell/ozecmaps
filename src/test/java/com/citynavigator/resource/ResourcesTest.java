@@ -18,6 +18,10 @@ import com.citynavigator.routing.GeoPoint;
 import com.citynavigator.routing.Optimization;
 import com.citynavigator.routing.RoadsidePlace;
 import com.citynavigator.routing.TravelMode;
+import com.citynavigator.dto.LoginRequest;
+import com.citynavigator.dto.RegisterRequest;
+import com.citynavigator.dto.SavedPlaces;
+import com.citynavigator.service.AccountService;
 import com.citynavigator.service.AlongRouteService;
 import com.citynavigator.service.IncidentService;
 import com.citynavigator.service.MapService;
@@ -55,6 +59,8 @@ class ResourcesTest {
     private TrafficService traffic;
     @Mock
     private TransitService transit;
+    @Mock
+    private AccountService accounts;
     @Mock
     private UriInfo uriInfo;
 
@@ -136,6 +142,26 @@ class ResourcesTest {
         verify(places).get(12);
         resource.along("pharmacy", "foot", "_ulyF_oxpD");
         verify(along).along(RoadsidePlace.Kind.PHARMACY, TravelMode.FOOT, "_ulyF_oxpD");
+    }
+
+    @Test
+    void accountRequestsAreSignedInByTheirToken() {
+        AccountResource resource = new AccountResource(accounts);
+        when(accounts.accountOf("Bearer t")).thenReturn(7L);
+        SavedPlaces places = new SavedPlaces(null, null, List.of());
+
+        assertThat(resource.register(new RegisterRequest("a@b.c", "12345678", null)).getStatus()).isEqualTo(201);
+        resource.login(new LoginRequest("a@b.c", "12345678"));
+        resource.account("Bearer t");
+        resource.places("Bearer t");
+        resource.replacePlaces("Bearer t", places);
+        assertThat(resource.delete("Bearer t").getStatus()).isEqualTo(204);
+
+        verify(accounts).login(new LoginRequest("a@b.c", "12345678"));
+        verify(accounts).account(7L);
+        verify(accounts).places(7L);
+        verify(accounts).replacePlaces(7L, places);
+        verify(accounts).delete(7L);
     }
 
     @Test
