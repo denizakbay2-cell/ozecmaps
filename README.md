@@ -139,13 +139,11 @@ tarayıcı ──▶ Netlify: arayüz (HTML, JS, CSS) ──/api/*──▶ Rend
 
 Kurulum:
 
-1. [neon.tech](https://neon.tech)'te bir proje açın (bölge: Frankfurt). Bağlantı bilgilerinden sunucu adını, veritabanını, kullanıcıyı ve parolayı alın.
-2. [render.com](https://render.com)'da **New → Blueprint** ile bu depoyu seçin. Render sorunca şunları girin:
-   - `DB_URL`: `jdbc:postgresql://<neon-sunucusu>/<veritabanı>?sslmode=require`
-   - `DB_USER`
-   - `DB_PASSWORD`
+1. [neon.tech](https://neon.tech)'te bir proje açın (bölge: Frankfurt, bağlantı havuzlama kapalı). Bağlantı dizesini (`postgresql://...`) kopyalayın.
+2. [render.com](https://render.com)'da **New → Blueprint** ile bu depoyu seçin. Render sorunca Neon'dan kopyaladığınız bağlantı dizesinin tamamını tek alana yapıştırın:
+   - `DATABASE_URL`: `postgresql://kullanıcı:parola@sunucu/veritabanı?sslmode=require&channel_binding=require`
 
-   `ADMIN_TOKEN` ve `AUTH_SECRET` kendiliğinden üretilir. İlk açılışta yol ağı veritabanına aktarılır.
+   `docker/start.sh` bunu JDBC adresine ve kullanıcı/parolaya ayırır; JDBC sürücüsünün tanımadığı `channel_binding` parametresini atar. `ADMIN_TOKEN` ve `AUTH_SECRET` kendiliğinden üretilir. İlk açılışta yol ağı veritabanına aktarılır.
 3. Render'ın verdiği adres `https://ozecmaps-api.onrender.com` değilse, `netlify.toml` dosyasındaki yönlendirmeyi ve `netlify/functions/keep-awake.mjs` dosyasındaki adresi o adrese göre düzeltin.
 4. [netlify.com](https://netlify.com)'da **Add new site → Import an existing project** ile bu depoyu seçin. Derleme ayarları `netlify.toml`'dan gelir.
 5. Olay bildirmek için Render'daki *Environment* sekmesinden `ADMIN_TOKEN`'ı kopyalayıp arayüzdeki anahtar düğmesine girin.
