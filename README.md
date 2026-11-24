@@ -134,7 +134,7 @@ tarayıcı ──▶ Netlify: arayüz (HTML, JS, CSS) ──/api/*──▶ Rend
 ```
 
 - **Netlify** arayüzü sunar ve `/api` ile başlayan istekleri Render'a iletir (`netlify.toml`). Tarayıcı tek bir site görür; CORS gerekmez, HTTPS Netlify'dandır.
-- **Render** Java sunucusunu Docker imajıyla çalıştırır (`render.yaml`). Ücretsiz planda 512 MB bellek vardır; uygulama bu sınır için ayarlıdır. Ulusal grafik sığmaz, Kadıköy dışındaki araç rotaları OSRM'den gelir. 15 dakika istek gelmezse sunucu uyur; arayüz bunu "Sunucu uyanıyor" diye gösterir ve sunucu açılınca kendiliğinden devam eder.
+- **Render** Java sunucusunu Docker imajıyla çalıştırır (`render.yaml`). Ücretsiz planda 512 MB bellek vardır; uygulama bu sınır için ayarlıdır. Ulusal grafik sığmaz, Kadıköy dışındaki araç rotaları OSRM'den gelir. Ücretsiz sunucu 15 dakika istek gelmezse uyur ve uyanması dakikalar sürer. Bu yüzden Netlify'daki zamanlanmış küçük bir fonksiyon (`netlify/functions/keep-awake.mjs`) ona 10 dakikada bir istek gönderir. Sürekli açık tek bir servis, Render'ın ayda verdiği 750 ücretsiz saatin yaklaşık 744'ünü kullanır. Sunucu yine de uyumuşsa arayüz "Sunucu uyanıyor" der ve sunucu açılınca kendiliğinden devam eder.
 - **Neon** veritabanını kalıcı tutar. Render'ın ücretsiz veritabanı 30 gün sonra silinir, hesaplar onunla giderdi.
 
 Kurulum:
@@ -146,7 +146,7 @@ Kurulum:
    - `DB_PASSWORD`
 
    `ADMIN_TOKEN` ve `AUTH_SECRET` kendiliğinden üretilir. İlk açılışta yol ağı veritabanına aktarılır.
-3. Render'ın verdiği adres `https://ozecmaps-api.onrender.com` değilse, `netlify.toml` dosyasındaki yönlendirmeyi o adrese göre düzeltin.
+3. Render'ın verdiği adres `https://ozecmaps-api.onrender.com` değilse, `netlify.toml` dosyasındaki yönlendirmeyi ve `netlify/functions/keep-awake.mjs` dosyasındaki adresi o adrese göre düzeltin.
 4. [netlify.com](https://netlify.com)'da **Add new site → Import an existing project** ile bu depoyu seçin. Derleme ayarları `netlify.toml`'dan gelir.
 5. Olay bildirmek için Render'daki *Environment* sekmesinden `ADMIN_TOKEN`'ı kopyalayıp arayüzdeki anahtar düğmesine girin.
 
@@ -274,7 +274,7 @@ JaCoCo raporu `target/site/jacoco/` altında oluşur. Satır kapsamı yaklaşık
 - Kadıköy dışındaki yürüyüş ve bisiklet rotaları, ulusal grafik yüklenmemişse araç rotaları ve arama açık servislere bağlıdır. Bu rotalarda yol olayları ve trafik hesaba katılmaz, yalnızca "en hızlı" rota vardır. Servisler yavaşsa ya da yanıt vermiyorsa uygulama bunu söyler.
 - Haritada simgesiyle görünen işletmeler yalnızca ayrıntılı bölgedekilerdir. Diğer şehirlerde işletmeler aramayla bulunur; harita karoları da işletme simgelerini gösterir.
 - Şifre sıfırlama yok, çünkü e-posta gönderen bir servis yok. Google ile giriş de yok.
-- Render'ın ücretsiz sunucusu 15 dakika kullanılmayınca uyur; ilk istek sunucu açılana kadar bekler.
+- Render'ın ücretsiz sunucusu çok küçük bir işlemci payıyla çalışır. Netlify ona 10 dakikada bir istek göndererek uyumasını önler. Yine de uyursa açılması dakikalar sürer; o sırada arayüz bekler.
 - Toplu taşıma yalnızca İstanbul'da ve tarifeye göre çalışır; araçların canlı konumu kullanılmaz.
   - Vapur, metro ve Marmaray tarifeleri İBB'nin 2024'te yayımladığı veridir. O tarihten sonra açılan hatlar ve tarife değişiklikleri görünmez.
   - Takvim tarihleri kullanılmaz, bu yüzden bayram tarifeleri bilinmez. Ücretler hesaba katılmaz.
