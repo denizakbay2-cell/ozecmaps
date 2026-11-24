@@ -154,7 +154,8 @@ Bütün özelliklerin (ulusal grafik dahil) çalıştığı ve hiç uyumayan bir
 
 | Yöntem | Yol | Açıklama |
 |---|---|---|
-| `GET` | `/api/ping` | Sağlık denetimi: rota grafiği yüklenince 200, yüklenirken 503 |
+| `GET` | `/api/health` | Canlılık denetimi: web katmanı yayına girer girmez 200. Barındırma platformu bunu kullanır |
+| `GET` | `/api/ping` | Hazırlık denetimi: rota grafiği belleğe yüklenince 200, yüklenirken 503 |
 | `GET` | `/api/map` | Alanın adı, sınırları, merkezi, düğüm ve parça sayısı, verinin tarihi, ulusal grafik (`nationalGraph`), trafik verisi olan bölge sayısı |
 | `GET` | `/api/route?from=enlem,boylam&to=enlem,boylam&mode=car\|bicycle\|foot&optimize=fastest\|shortest&departAt=2026-11-16T08:00+03:00&alternatives=true` | Rota: `via=enlem,boylam;enlem,boylam` ile en fazla üç ara duraktan geçer (bu durumda alternatif verilmez). Mesafe, süre, geometri, adım adım tarif (durağa varış `WAYPOINT` adımıdır), rotadaki olaylar, `trafficDelaySeconds` ve trafiğin yavaşlattığı kesimler (`traffic`: geometrideki başlangıç ve bitiş noktası ile serbest akış hızının oranı). `engine` hangi motorun hesapladığını söyler: `astar`, `national` ya da `osrm`. `departAt` verilmezse kalkış şimdidir. `alternatives=true` ile, varsa belirgin biçimde farklı ikinci rota aynı biçimde `alternatives` alanında gelir |
 | `GET` | `/api/transit?from=enlem,boylam&to=enlem,boylam&departAt=2026-11-16T08:00+03:00` | İstanbul'da toplu taşımayla yolculuk: ne zaman çıkılacağı, varış, araç sayısı ve bölümler (`legs`). Her bölüm bir yürüyüş (`WALK`) ya da araçla yolculuktur (`FERRY`, `METRO`, `RAIL`, `TRAM`, `BUS`, `METROBUS`, `MINIBUS`, `DOLMUS`…): hat (`M4`, `14M`), yön, biniş ve iniş durağı, saatler ve haritada çizilecek yol. `alternatives` en fazla üç başka seçenek verir |
