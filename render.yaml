@@ -1,7 +1,9 @@
 # Render Blueprint (https://render.com/docs/blueprint-spec): the Java server of ozecmaps, the API behind the interface
 # on Netlify (netlify.toml). Dashboard -> New -> Blueprint -> this repository.
-# The database is on Neon (free and permanent, unlike Render's free database, which is deleted after 30 days): give
-# DB_URL (jdbc:postgresql://<host>/<database>?sslmode=require), DB_USER and DB_PASSWORD when Render asks for them.
+# The database is on Neon (free and permanent, unlike Render's free database, which is deleted after 30 days): paste
+# Neon's whole connection string (postgresql://user:password@host/db?sslmode=require&channel_binding=require) into
+# DATABASE_URL when Render asks for it. docker/start.sh splits it into the JDBC URL and credentials and drops the
+# channel_binding parameter, which the PostgreSQL JDBC driver does not understand.
 services:
   - type: web
     name: ozecmaps-api
@@ -10,11 +12,7 @@ services:
     region: frankfurt
     healthCheckPath: /api/ping
     envVars:
-      - key: DB_URL
-        sync: false
-      - key: DB_USER
-        sync: false
-      - key: DB_PASSWORD
+      - key: DATABASE_URL
         sync: false
       # no sample incidents on the public site: they would show made-up closures on real streets
       - key: DEMO_DATA
