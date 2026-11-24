@@ -1,16 +1,16 @@
 #!/bin/sh
-# Publishes Rota on an Ubuntu server reachable over SSH. Written for an Oracle Cloud Always Free ARM machine, works on
+# Publishes ozecmaps on an Ubuntu server reachable over SSH. Written for an Oracle Cloud Always Free ARM machine, works on
 # any Ubuntu 22.04 or 24.04 server with the same processor type as this computer (the image is built here):
 #   1. installs Docker on the server the first time and opens HTTP and HTTPS in its firewall,
 #   2. builds the application image here and sends it over,
 #   3. copies the production stack (deploy/), the national graph (data/turkey-car.graph) and creates the secrets,
 #   4. starts PostgreSQL, the application and Caddy, which fetches the HTTPS certificate.
 #
-#   scripts/deploy-server.sh ubuntu@203.0.113.10                     # https://rota.203-0-113-10.sslip.io
-#   scripts/deploy-server.sh ubuntu@203.0.113.10 rota.example.com    # a domain whose DNS points at the server
+#   scripts/deploy-server.sh ubuntu@203.0.113.10                         # https://ozecmaps.203-0-113-10.sslip.io
+#   scripts/deploy-server.sh ubuntu@203.0.113.10 ozecmaps.example.com    # a domain whose DNS points at the server
 #
 # Run it again after a change: the graph is sent only when it changed, data and secrets stay. SSH_KEY picks the key
-# (default ~/.ssh/rota_oracle). The server's cloud firewall must allow TCP 80 and 443 (see README).
+# (default ~/.ssh/ozecmaps_oracle). The server's cloud firewall must allow TCP 80 and 443 (see README).
 set -eu
 
 if [ $# -lt 1 ]; then
@@ -19,10 +19,10 @@ if [ $# -lt 1 ]; then
 fi
 target=$1
 host=${target#*@}
-site=${2:-rota.$(printf '%s' "$host" | tr . -).sslip.io}
+site=${2:-ozecmaps.$(printf '%s' "$host" | tr . -).sslip.io}
 root=$(cd "$(dirname "$0")/.." && pwd)
-key=${SSH_KEY:-$HOME/.ssh/rota_oracle}
-remote=/opt/rota
+key=${SSH_KEY:-$HOME/.ssh/ozecmaps_oracle}
+remote=/opt/ozecmaps
 ssh_opts="-i $key -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=30"
 
 on_server() {
@@ -60,8 +60,8 @@ done
 if [ -f /etc/iptables/rules.v4 ] && ! grep -q -- "--dport 443" /etc/iptables/rules.v4; then
     sed -i '/-A INPUT -j REJECT/i -A INPUT -p tcp -m state --state NEW -m tcp --dport 80 -j ACCEPT\n-A INPUT -p tcp -m state --state NEW -m tcp --dport 443 -j ACCEPT\n-A INPUT -p udp -m udp --dport 443 -j ACCEPT' /etc/iptables/rules.v4
 fi
-mkdir -p /opt/rota/data
-chown -R "${SUDO_USER:-root}" /opt/rota
+mkdir -p /opt/ozecmaps/data
+chown -R "${SUDO_USER:-root}" /opt/ozecmaps
 EOF
 
 echo "2/5 building the application image ($server_arch) ..."
@@ -102,7 +102,7 @@ printf "waiting for https://%s " "$site"
 for _ in $(seq 1 60); do
     if curl -fsS -o /dev/null --max-time 5 "https://$site/api/ping" 2>/dev/null; then
         echo
-        echo "Rota is live: https://$site"
+        echo "ozecmaps is live: https://$site"
         echo "admin token for reporting incidents: ssh into the server and run: grep ADMIN_TOKEN $remote/.env"
         exit 0
     fi

@@ -17,7 +17,8 @@ Araç rotalarında İstanbul trafiği İBB'nin açık verisinden hesaba katılı
 - **Yer ve işletme arama:** Türkiye'nin her yerinde semt, cadde, iskele, hastane ve işletme ("Migros", "eczane", "Starbucks") aranabilir. Sonuçlar haritanın baktığı yere göre sıralanır. Aynı adlı yerler (örneğin Migros şubeleri) birbirinden ayırt edilir: her sonuçta sokağı ve semti ("Mühürdar Caddesi, Osmanağa"), uzaklığı ve haritada numaralı bir iğnesi vardır, en yakını en üsttedir. Türkçe karakter olmadan yazılsa da bulur: "kadikoy iskelesi". Başlangıç ve varış haritaya dokunarak da seçilebilir, işaretçiler sürüklenebilir.
 - **İşletmeler haritada:** Kadıköy'deki yaklaşık 6.200 işletme (kafe, restoran, eczane, market, banka…) yakınlaşınca simgeleriyle görünür. Tıklayınca türü, çalışma saatleri, telefonu ve web sitesi gösterilir; "Buraya git" ile rota başlar.
 - **Rota:** Araç, bisiklet ve yürüyüş için rota hesaplanır. Tek yönlü sokaklara, dönel kavşaklara ve yaya yollarına uyar. Araçla Edirne'den Van'a kadar her rotayı kendi motorumuz 1,5 saniyenin altında bulur.
-- **Ev, İş ve kaydedilen yerler:** Ana ekrandaki Ev ve İş düğmeleri tek dokunuşla oraya rota çizer. Ayarlı değilse dokunup bir yer arayın ya da haritada seçin, o yer kaydedilir. "Nereye" kutusundaki yıldızla hedef Ev, İş ya da Kaydedilenler'e eklenir. Kayıtlar bu cihazda (tarayıcıda) tutulur.
+- **Ev, İş ve kaydedilen yerler:** Ana ekrandaki Ev ve İş düğmeleri tek dokunuşla oraya rota çizer. Ayarlı değilse dokunup bir yer arayın ya da haritada seçin, o yer kaydedilir. "Nereye" kutusundaki yıldızla hedef Ev, İş ya da Kaydedilenler'e eklenir. Giriş yapılmamışsa kayıtlar bu cihazda (tarayıcıda) tutulur.
+- **Hesap:** Başlıktaki kişi düğmesiyle hesap açılır ya da giriş yapılır. Ev, İş ve kaydedilen yerler hesapta saklanır ve her cihazda aynıdır; girişten önce kaydedilenler hesaba taşınır. Şifre açık metin olarak saklanmaz (PBKDF2), oturum 30 gün geçerli imzalı bir anahtarla tutulur. Çıkış yapınca yerler cihazdan silinir, hesapta kalır ([ADR-0014](docs/adr/ADR-0014.md)).
 - **Varış saatini paylaşma:** Rota kartındaki ve navigasyon çubuğundaki paylaş düğmesi "Yoldayım: Sarıgül Sokağı. Tahmini varış 21:22 (14 dk kaldı)." mesajını, hedefi açan bir bağlantıyla telefonun paylaşma menüsüne verir; menü yoksa panoya kopyalar. Bağlantıda yalnızca hedef vardır, sizin konumunuz paylaşılmaz.
 - **Ara durak:** "Ara durak ekle" ile başlangıç ve varış arasına en fazla üç durak eklenir; haritaya dokunup "Durak ekle" de denebilir. Rota durak durak hesaplanır, her bacağın trafiği o bacağın başlayacağı saate göredir. Navigasyon durağa yaklaşınca "200 metre sonra ara durağa ulaşacaksınız" der.
 - **Yol üstünde arama:** Rota kartındaki "Yol üstünde" çipleri rotanın yakınındaki benzinlikleri, şarj istasyonlarını, eczaneleri, marketleri ya da ATM ve bankaları listeler: "2,4 km sonra · sağda, yoldan 40 m · Bağdat Caddesi". Sonuçlar haritada da simgeleriyle görünür. "Durak" düğmesi yeri ara durak yapar ve rotadaki sırasına göre öteki durakların arasına yerleştirir. Türkiye'nin her yerinde çalışır; yerler OpenStreetMap'ten çıkarılıp uygulamayla gelir ([ADR-0012](docs/adr/ADR-0012.md)).
@@ -113,7 +114,8 @@ Ayarlar yalnızca ortam değişkenlerinden okunur; kodda parola yoktur.
 | `DB_PASSWORD` | yerel parolanız | |
 | `DATABASE_URL` | `postgresql://kullanıcı:parola@host:5432/db` | Bulut platformları bunu verir. Docker imajı yukarıdaki üç değişkene çevirir |
 | `DEMO_DATA` | `true` | Hiç olay olmayan bir veritabanına üç örnek olay ekler |
-| `ADMIN_TOKEN` | rastgele bir değer | Tanımlıysa olay bildirmek ve yer eklemek `X-Admin-Token` başlığı ister. Rota ve arama herkese açık kalır |
+| `ADMIN_TOKEN` | rastgele bir değer | Tanımlıysa olay bildirmek ve yer eklemek `X-Admin-Token` başlığı ister. Rota, arama ve hesaplar herkese açık kalır |
+| `AUTH_SECRET` | en az 32 karakterlik rastgele bir değer | Oturum anahtarlarını imzalar. Yoksa her açılışta rastgele seçilir ve sunucu yeniden başlayınca herkes yeniden giriş yapar |
 | `PORT` | `8080` | Docker imajının HTTP portu |
 | `EXTERNAL_SERVICES` | `true` | `false` olursa açık servisler (OSRM, Photon, İBB endeksi) kapanır. Uygulama kendi verisiyle çalışır: ayrıntılı bölge, varsa ulusal grafik ve olağan trafik profili |
 | `NATIONAL_GRAPH_FILE` | `/data/turkey-car.graph` | Ulusal araç grafiği. Yoksa, bozuksa ya da heap yetmiyorsa motor kapalı kalır ve günlüğe nedeni yazılır |
@@ -123,19 +125,32 @@ Ayarlar yalnızca ortam değişkenlerinden okunur; kodda parola yoktur.
 
 `.env.example` dosyasını `.env` olarak kopyalayıp doldurun. `.env` git'e girmez, `docker compose` onu kendiliğinden okur.
 
-## İnternete açma (Render)
+## İnternete açma (Netlify + Render + Neon)
 
-Depodaki [Render Blueprint](render.yaml) dosyası web servisini (Docker, ücretsiz plan) ve bir PostgreSQL 17 veritabanını birlikte kurar:
+Ücretsiz yayın üç parçadan oluşur ([ADR-0015](docs/adr/ADR-0015.md)):
 
-1. [render.com](https://render.com)'a GitHub hesabınızla girin.
-2. **New → Blueprint** seçin, bu depoyu ve yayınlanacak dalı seçip onaylayın.
-3. İlk dağıtım yeşile dönünce servis adresini açın (`https://city-navigator-….onrender.com`).
-4. Olay bildirmek için servisin *Environment* sekmesindeki `ADMIN_TOKEN` değerini kopyalayın ve arayüzdeki anahtar düğmesine girin.
+```
+tarayıcı ──▶ Netlify: arayüz (HTML, JS, CSS) ──/api/*──▶ Render: Java sunucusu ──▶ Neon: PostgreSQL
+```
 
-Ücretsiz planın sınırları:
-- 15 dakika istek gelmezse servis uyur, ilk istek yaklaşık bir dakika bekler.
-- Ücretsiz veritabanı 30 gün sonra silinir. Uygulama bir sonraki açılışta yol ağını yeniden aktarır, kaybolan yalnızca olaylar ve elle eklenen yerlerdir.
-- Bellek 512 MB'dır. Uygulama ulusal grafik olmadan aynı sınırla yerelde denendi ve yaklaşık 400 MB kullandı. Ulusal grafik ücretsiz plana sığmaz. Burada Kadıköy dışındaki araç rotaları OSRM'den gelir; trafik profili ve canlı endeks yine çalışır. Ulusal motor için en az 1,5 GB bellekli bir sunucu gerekir (ör. Render'ın ücretli planları ya da Oracle Cloud'un ücretsiz sanal makinesi). Grafik dosyası imaja konmaz; sunucuya ayrıca kopyalanmalı ve `NATIONAL_GRAPH_FILE` ile gösterilmelidir.
+- **Netlify** arayüzü sunar ve `/api` ile başlayan istekleri Render'a iletir (`netlify.toml`). Tarayıcı tek bir site görür; CORS gerekmez, HTTPS Netlify'dandır.
+- **Render** Java sunucusunu Docker imajıyla çalıştırır (`render.yaml`). Ücretsiz planda 512 MB bellek vardır; uygulama bu sınır için ayarlıdır. Ulusal grafik sığmaz, Kadıköy dışındaki araç rotaları OSRM'den gelir. 15 dakika istek gelmezse sunucu uyur; arayüz bunu "Sunucu uyanıyor" diye gösterir ve sunucu açılınca kendiliğinden devam eder.
+- **Neon** veritabanını kalıcı tutar. Render'ın ücretsiz veritabanı 30 gün sonra silinir, hesaplar onunla giderdi.
+
+Kurulum:
+
+1. [neon.tech](https://neon.tech)'te bir proje açın (bölge: Frankfurt). Bağlantı bilgilerinden sunucu adını, veritabanını, kullanıcıyı ve parolayı alın.
+2. [render.com](https://render.com)'da **New → Blueprint** ile bu depoyu seçin. Render sorunca şunları girin:
+   - `DB_URL`: `jdbc:postgresql://<neon-sunucusu>/<veritabanı>?sslmode=require`
+   - `DB_USER`
+   - `DB_PASSWORD`
+
+   `ADMIN_TOKEN` ve `AUTH_SECRET` kendiliğinden üretilir. İlk açılışta yol ağı veritabanına aktarılır.
+3. Render'ın verdiği adres `https://ozecmaps-api.onrender.com` değilse, `netlify.toml` dosyasındaki yönlendirmeyi o adrese göre düzeltin.
+4. [netlify.com](https://netlify.com)'da **Add new site → Import an existing project** ile bu depoyu seçin. Derleme ayarları `netlify.toml`'dan gelir.
+5. Olay bildirmek için Render'daki *Environment* sekmesinden `ADMIN_TOKEN`'ı kopyalayıp arayüzdeki anahtar düğmesine girin.
+
+Bütün özelliklerin (ulusal grafik dahil) çalıştığı ve hiç uyumayan bir sunucu için `scripts/deploy-server.sh` uygulamayı en az 2 GB bellekli herhangi bir Ubuntu sunucusuna (ör. Oracle Cloud'un ücretsiz ARM makinesi) Caddy ile HTTPS'li olarak kurar.
 
 ## API
 
@@ -151,6 +166,9 @@ Depodaki [Render Blueprint](render.yaml) dosyası web servisini (Docker, ücrets
 | `GET` | `/api/places/street?lat=…&lon=…` | Bir noktadaki yolun ya da yerin adı |
 | `GET` | `/api/places/along?need=fuel\|charging\|pharmacy\|money\|market&mode=car\|bicycle\|foot&line=…` | Rotanın yakınındaki yerler. `line` rotanın kodlanmış çizgisidir (Google'ın biçimi, beş ondalık). Rotaya yayılmış en fazla 20 yer döner; her birinin rotadaki yeri (`alongMeters`), rotaya uzaklığı (`offsetMeters`) ve rotanın hangi yanında olduğu (`side`) yazar |
 | `GET` | `/api/businesses?minLat=…&minLon=…&maxLat=…&maxLon=…` | Sokak ölçeğindeki bir görünümdeki işletmeler (ayrıntılı bölge) |
+| `POST` | `/api/account/register`, `/api/account/login` | Hesap açma ve giriş: `email`, `password` (en az 8 karakter), hesap açarken isteğe bağlı `name`. Yanıtta 30 gün geçerli `token` |
+| `GET` `PUT` | `/api/account/places` | Hesabın yerleri: `home`, `work` ve en fazla 20 yerlik `places`. `Authorization: Bearer <token>` ister |
+| `GET` `DELETE` | `/api/account` | Hesabın bilgisi; hesabı ve bütün yerlerini silme |
 | `POST` `DELETE` | `/api/places`, `/api/places/{id}` | Elle yer ekleme ve silme. OpenStreetMap'ten gelen yerler silinmez |
 | `GET` `POST` | `/api/incidents` | Etkin olaylar / olay bildirme: `type`, `lat`, `lon`, isteğe bağlı `description`, `durationMinutes` |
 | `GET` | `/api/incidents/{id}` | Tek bir olay ve kapsadığı yol parçaları |
@@ -164,9 +182,10 @@ curl -X POST localhost:8080/api/incidents -H 'Content-Type: application/json' \
 
 Hata kodları:
 - `400`: geçersiz istek (alan alan liste),
-- `401`: yönetici anahtarı eksik,
+- `401`: yönetici anahtarı eksik, giriş gerekiyor ya da e-posta veya şifre yanlış,
 - `404`: olay ya da yer bulunamadı,
 - `409`: çakışma (aynı adlı yer, eşzamanlı güncelleme),
+- `429`: aynı hesaba çok fazla yanlış şifre denendi; 15 dakika sonra tekrar denenebilir,
 - `422`: kural ihlali. Örnekler: nokta Türkiye dışında, yakında yol yok, iki nokta arasında rota yok, kalkış 7 günden sonra, olay zaten kaldırılmış,
 - `503`: Türkiye geneli rota ya da adres servisi şu an yanıt vermiyor ya da rota motoru çok yoğun.
 
@@ -232,9 +251,10 @@ Bellek için alanı bir ilçe ya da küçük bir şehir büyüklüğünde tutun 
 ./mvnw verify
 ```
 
-Toplam 282 test var:
+Toplam 295 test var:
 - rota motoru: geometri, grafik, uzamsal indeks, A*, alternatif rota, trafik, tarif üretimi, yol üstündeki yerler,
 - toplu taşıma: GTFS verisini düzeltme, RAPTOR, yolculuk seçimi, uygulamayla gelen tarifelerle gerçek bir yolculuk,
+- hesaplar: şifre özeti, oturum anahtarı, yanlış şifre sınırı, yerlerin hesapta saklanması,
 - gerçek Kadıköy verisi üzerinde A* ile Dijkstra karşılaştırması,
 - ulusal grafik: kavşak sıkıştırma, dosya biçimi, aynı yollarda ayrıntılı motorla aynı en kısa mesafeler,
 - trafik profili, İBB endeks istemcisi, çevrimdışı araçlar,
@@ -253,6 +273,8 @@ JaCoCo raporu `target/site/jacoco/` altında oluşur. Satır kapsamı yaklaşık
 - Trafik yalnızca İstanbul için vardır. Olağan trafik 2024 sonbaharı verisidir. Canlı endeks bütün şehir için tek bir sayıdır, tek bir yoldaki kazayı göstermez.
 - Kadıköy dışındaki yürüyüş ve bisiklet rotaları, ulusal grafik yüklenmemişse araç rotaları ve arama açık servislere bağlıdır. Bu rotalarda yol olayları ve trafik hesaba katılmaz, yalnızca "en hızlı" rota vardır. Servisler yavaşsa ya da yanıt vermiyorsa uygulama bunu söyler.
 - Haritada simgesiyle görünen işletmeler yalnızca ayrıntılı bölgedekilerdir. Diğer şehirlerde işletmeler aramayla bulunur; harita karoları da işletme simgelerini gösterir.
+- Şifre sıfırlama yok, çünkü e-posta gönderen bir servis yok. Google ile giriş de yok.
+- Render'ın ücretsiz sunucusu 15 dakika kullanılmayınca uyur; ilk istek sunucu açılana kadar bekler.
 - Toplu taşıma yalnızca İstanbul'da ve tarifeye göre çalışır; araçların canlı konumu kullanılmaz.
   - Vapur, metro ve Marmaray tarifeleri İBB'nin 2024'te yayımladığı veridir. O tarihten sonra açılan hatlar ve tarife değişiklikleri görünmez.
   - Takvim tarihleri kullanılmaz, bu yüzden bayram tarifeleri bilinmez. Ücretler hesaba katılmaz.
@@ -280,6 +302,8 @@ JaCoCo raporu `target/site/jacoco/` altında oluşur. Satır kapsamı yaklaşık
 - [Sesli yönlendirme: cihazın kendi sesi](docs/adr/ADR-0011.md)
 - [Yol üstünde arama: uygulamayla gelen yer listesi](docs/adr/ADR-0012.md)
 - [Toplu taşıma: İBB'nin GTFS verisi ve RAPTOR](docs/adr/ADR-0013.md)
+- [Kullanıcı hesapları: kendi sunucumuzda, PBKDF2 ve imzalı oturum](docs/adr/ADR-0014.md)
+- [Ücretsiz yayın: Netlify, Render ve Neon](docs/adr/ADR-0015.md)
 
 ## Teknolojiler
 

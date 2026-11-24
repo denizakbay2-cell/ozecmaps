@@ -59,6 +59,8 @@
         <div class="head-actions">
             <button id="install-button" class="icon-button" type="button" data-icon="download" hidden
                     title="ozecmaps'i uygulama olarak yükle" aria-label="Uygulamayı yükle"></button>
+            <button id="account-button" class="icon-button" type="button" data-icon="user"
+                    title="Giriş yapın: Ev, İş ve kayıtlı yerleriniz her cihazda" aria-label="Hesap"></button>
             <button id="admin-button" class="icon-button" type="button" data-icon="key"
                     title="Yönetici anahtarı: canlı sürümde olay bildirmek için gerekir" aria-label="Yönetici anahtarı"></button>
         </div>
@@ -324,6 +326,48 @@
         </footer>
     </div>
 </section>
+
+<dialog id="account-dialog" class="dialog" aria-labelledby="account-title">
+    <form id="account-form" method="dialog">
+        <h2 id="account-title">Hesap</h2>
+        <div id="account-signed-out" class="account-section">
+            <p class="muted small">Giriş yapınca Ev, İş ve kaydettiğiniz yerler her cihazda sizinle olur. Şifreniz
+                açık metin olarak saklanmaz.</p>
+            <div class="account-tabs" role="tablist" aria-label="Giriş ya da yeni hesap">
+                <button id="account-tab-login" type="button" role="tab" aria-selected="true">Giriş yap</button>
+                <button id="account-tab-register" type="button" role="tab" aria-selected="false">Hesap aç</button>
+            </div>
+            <label id="account-name-field" hidden>
+                <span>Adınız (isteğe bağlı)</span>
+                <input name="name" maxlength="60" autocomplete="name">
+            </label>
+            <label>
+                <span>E-posta</span>
+                <input name="email" type="email" maxlength="254" autocomplete="email" required>
+            </label>
+            <label>
+                <span>Şifre (en az 8 karakter)</span>
+                <input name="password" type="password" minlength="8" maxlength="128" autocomplete="current-password"
+                       required>
+            </label>
+            <p id="account-error" class="form-error" role="alert" hidden></p>
+            <div class="dialog-actions">
+                <button class="button ghost" type="button" data-close>Vazgeç</button>
+                <button id="account-submit" class="button primary" type="submit">Giriş yap</button>
+            </div>
+        </div>
+        <div id="account-signed-in" class="account-section" hidden>
+            <p><strong id="account-name"></strong><br><span id="account-email" class="muted small"></span></p>
+            <p class="muted small">Ev, İş ve kaydettiğiniz yerler hesabınızda saklanıyor; bir cihazda değiştirdiğiniz
+                yer öbürlerinde de değişir. Son aramalar yalnızca bu cihazda kalır.</p>
+            <div class="dialog-actions account-actions">
+                <button id="account-delete" class="button ghost delete-account" type="button">Hesabı sil</button>
+                <button id="account-signout" class="button" type="button">Çıkış yap</button>
+                <button class="button primary" type="button" data-close>Tamam</button>
+            </div>
+        </div>
+    </form>
+</dialog>
 
 <dialog id="incident-dialog" class="dialog">
     <form id="incident-form" method="dialog">

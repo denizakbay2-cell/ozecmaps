@@ -1,5 +1,5 @@
 # The production stack on one server: Caddy (HTTPS, compression) -> the application -> PostgreSQL.
-# scripts/deploy-server.sh copies this file to /opt/rota on the server together with the Caddyfile, the national graph
+# scripts/deploy-server.sh copies this file to /opt/ozecmaps on the server together with the Caddyfile, the national graph
 # (data/turkey-car.graph) and an .env with SITE_ADDRESS, DB_PASSWORD and ADMIN_TOKEN, then starts it.
 services:
   db:
@@ -34,7 +34,8 @@ services:
       DB_USER: navigator
       DB_PASSWORD: ${DB_PASSWORD}
       ADMIN_TOKEN: ${ADMIN_TOKEN:?ADMIN_TOKEN missing from .env}
-      DEMO_DATA: "true"
+      # no sample incidents on the public site: they would show made-up closures on real streets
+      DEMO_DATA: "false"
       NATIONAL_GRAPH_FILE: /data/turkey-car.graph
       # 70 % of the 2 GB limit for the heap: the national graph needs about 800 MB of it
       MEM_MAX_RAM_PERCENTAGE: "70.0"

@@ -13,13 +13,16 @@ import java.util.Set;
 /**
  * Keeps a public deployment read-only for strangers: when {@code ADMIN_TOKEN} is set, every request that changes
  * data (reporting an incident, adding a place) must carry it in the {@code X-Admin-Token} header. Routing and
- * searching stay open. Without the variable (local development) everything is open.
+ * searching stay open, and so do accounts, which sign their requests in themselves. Without the variable (local
+ * development) everything is open.
  */
 @Provider
 @Priority(Priorities.AUTHENTICATION)
 public class AdminTokenFilter implements ContainerRequestFilter {
 
     static final String HEADER = "X-Admin-Token";
+    /** Account requests are signed in by their own token (see AccountResource). */
+    static final String ACCOUNTS = "account";
     private static final Set<String> READ_ONLY_METHODS = Set.of("GET", "HEAD", "OPTIONS");
 
     private final byte[] expectedToken;
@@ -34,7 +37,8 @@ public class AdminTokenFilter implements ContainerRequestFilter {
 
     @Override
     public void filter(ContainerRequestContext request) {
-        if (expectedToken == null || READ_ONLY_METHODS.contains(request.getMethod())) {
+        if (expectedToken == null || READ_ONLY_METHODS.contains(request.getMethod())
+                || request.getUriInfo().getPath().startsWith(ACCOUNTS)) {
             return;
         }
         String given = request.getHeaderString(HEADER);

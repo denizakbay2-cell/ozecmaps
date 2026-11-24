@@ -2539,6 +2539,56 @@ svg.icon {
     gap: 8px;
 }
 
+/* the account: signing in, or the signed-in account */
+.account-section {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.account-tabs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px;
+    padding: 4px;
+    border-radius: 14px;
+    background: var(--surface-2);
+}
+
+.account-tabs button {
+    min-height: 40px;
+    border: 0;
+    border-radius: 10px;
+    background: transparent;
+    color: var(--muted);
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.account-tabs button[aria-selected="true"] {
+    background: var(--ink);
+    color: #ffffff;
+}
+
+.form-error {
+    padding: 10px 12px;
+    border-radius: 12px;
+    background: var(--warn-soft);
+    color: var(--warn-text);
+    font-size: 0.88rem;
+}
+
+.account-actions {
+    flex-wrap: wrap;
+}
+
+/* deleting the account: quiet until asked, red text on no background */
+.button.delete-account {
+    margin-right: auto;
+    color: var(--danger);
+}
+
 .toast {
     position: fixed;
     z-index: 4000;
@@ -2824,6 +2874,11 @@ svg.icon {
 
     .along-chip[aria-pressed="true"] {
         border-color: var(--lime);
+        background: var(--lime);
+        color: var(--on-lime);
+    }
+
+    .account-tabs button[aria-selected="true"] {
         background: var(--lime);
         color: var(--on-lime);
     }

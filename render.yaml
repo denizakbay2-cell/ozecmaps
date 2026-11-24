@@ -1,37 +1,33 @@
-# Render Blueprint: https://render.com/docs/blueprint-spec
-# Dashboard -> New -> Blueprint -> pick this repository. Creates the web service and a PostgreSQL database.
+# Render Blueprint (https://render.com/docs/blueprint-spec): the Java server of ozecmaps, the API behind the interface
+# on Netlify (netlify.toml). Dashboard -> New -> Blueprint -> this repository.
+# The database is on Neon (free and permanent, unlike Render's free database, which is deleted after 30 days): give
+# DB_URL (jdbc:postgresql://<host>/<database>?sslmode=require), DB_USER and DB_PASSWORD when Render asks for them.
 services:
   - type: web
-    name: city-navigator
+    name: ozecmaps-api
     runtime: docker
     plan: free
+    region: frankfurt
     healthCheckPath: /api/ping
     envVars:
-      # start.sh turns the connection string into DB_URL; credentials come separately
-      - key: DATABASE_URL
-        fromDatabase:
-          name: city-navigator-db
-          property: connectionString
+      - key: DB_URL
+        sync: false
       - key: DB_USER
-        fromDatabase:
-          name: city-navigator-db
-          property: user
+        sync: false
       - key: DB_PASSWORD
-        fromDatabase:
-          name: city-navigator-db
-          property: password
+        sync: false
+      # no sample incidents on the public site: they would show made-up closures on real streets
       - key: DEMO_DATA
-        value: "true"
-      # the free plan has 512 MB; leave room next to the heap for Payara's own memory
+        value: "false"
+      # the free plan has 512 MB: a lean JVM (measured: about 460 MB under load with every feature in use)
       - key: MEM_MAX_RAM_PERCENTAGE
-        value: "55.0"
-      # Random secret; copy it from the dashboard (Environment tab) to report incidents from the UI
+        value: "50.0"
+      - key: MEM_XSS
+        value: "512k"
+      - key: JVM_ARGS
+        value: "-XX:+UseSerialGC -XX:TieredStopAtLevel=1 -XX:ReservedCodeCacheSize=48m -XX:MaxMetaspaceSize=192m"
+      # random secrets made by Render: the administrator's token (Environment tab) and the key that signs sessions
       - key: ADMIN_TOKEN
         generateValue: true
-
-databases:
-  - name: city-navigator-db
-    plan: free
-    databaseName: city_navigator
-    user: navigator
-    postgresMajorVersion: "17"
+      - key: AUTH_SECRET
+        generateValue: true
