@@ -1,0 +1,26 @@
+# The interface of ozecmaps on Netlify. The Java server (routes, search, public transport, accounts) runs on Render
+# (render.yaml); Netlify passes every /api request on to it, so the browser sees one site and needs no CORS.
+[build]
+  # the web files, without WEB-INF, which only the Java server reads
+  command = "rm -rf dist && mkdir dist && cp -R src/main/webapp/. dist/ && rm -rf dist/WEB-INF"
+  publish = "dist"
+
+[[redirects]]
+  from = "/api/*"
+  to = "https://ozecmaps-api.onrender.com/api/:splat"
+  status = 200
+  force = true
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Strict-Transport-Security = "max-age=31536000"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "geolocation=(self), camera=(), microphone=()"
+
+# the service worker is always checked for a newer version
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache"

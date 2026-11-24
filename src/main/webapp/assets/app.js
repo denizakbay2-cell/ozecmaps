@@ -22,8 +22,17 @@ const TRANSIT_STYLE = {
 const INCIDENT_COLORS = { ACCIDENT: '#dc2626', ROADWORK: '#ea580c', CONGESTION: '#d97706', CLOSURE: '#7c3aed' };
 const FIELDS = {
     from: 'Başlangıç', to: 'Varış', mode: 'Ulaşım şekli', type: 'Olay türü',
-    description: 'Açıklama', durationMinutes: 'Süre', lat: 'Enlem', lon: 'Boylam', name: 'Ad', category: 'Kategori'
+    description: 'Açıklama', durationMinutes: 'Süre', lat: 'Enlem', lon: 'Boylam', name: 'Ad', category: 'Kategori',
+    email: 'E-posta', password: 'Şifre', label: 'Yer adı', detail: 'Ayrıntı', places: 'Kayıtlı yerler'
 };
+/** The signed-in account: its token and how to greet it. */
+const SESSION_KEY = 'city-navigator.session';
+/** Set while this device has changes to the saved places that the account has not received yet. */
+const PLACES_DIRTY_KEY = 'city-navigator.places-dirty';
+/** Answers that mean the server is unreachable or still waking up (free hosting sleeps when nobody uses it). */
+const WAKING_STATUSES = [0, 502, 503, 504];
+/** How long to wait for a sleeping server to wake up (ms): a free server with a sliver of a processor is slow. */
+const WAKE_TIMEOUT_MS = 300000;
 /** Distance from the route (m) that counts as having left it, per mode. */
 const OFF_ROUTE_METERS = { car: 40, bicycle: 30, foot: 25 };
 /** Distances (m) before a manoeuvre at which it is announced; the last one says "şimdi". */
@@ -159,6 +168,7 @@ const ICONS = {
         ['circle', { cx: 12, cy: 12, r: 2.5, fill: 'currentColor' }]],
     swap: [['path', { d: 'M7 4v16M3 8l4-4 4 4M17 20V4M13 16l4 4 4-4' }]],
     key: [['circle', { cx: 8, cy: 15, r: 4 }], ['path', { d: 'M11 12 20 3M16.5 6.5l3 3M14 9l2.5 2.5' }]],
+    user: [['circle', { cx: 12, cy: 8, r: 4 }], ['path', { d: 'M4 21c0-4 3.6-7 8-7s8 3 8 7' }]],
     volume: [['path', { d: 'M4 9.5v5h3.5L12 18V6L7.5 9.5Z' }], ['path', { d: 'M16 9.5a3.5 3.5 0 0 1 0 5M18.5 7a7 7 0 0 1 0 10' }]],
     volumeOff: [['path', { d: 'M4 9.5v5h3.5L12 18V6L7.5 9.5Z' }], ['path', { d: 'M16 10l5 4M21 10l-5 4' }]],
     play: [['path', { d: 'M7 5v14l11-7Z', fill: 'currentColor' }]],
@@ -366,7 +376,10 @@ class ApiError extends Error {
     constructor(status, problem) {
         const fieldErrors = (problem?.errors ?? [])
             .map((error) => `${FIELDS[error.field] ?? error.field}: ${error.message}`);
-        super([problem?.detail ?? `İstek başarısız (HTTP ${status})`, ...fieldErrors].join(' · '));
+        const fallback = WAKING_STATUSES.includes(status)
+            ? 'Sunucu şu an yanıt vermiyor; uyanıyor olabilir, birkaç saniye sonra tekrar deneyin'
+            : `İstek başarısız (HTTP ${status})`;
+        super([problem?.detail ?? fallback, ...fieldErrors].join(' · '));
         this.status = status;
     }
 }
@@ -374,8 +387,12 @@ class ApiError extends Error {
 async function request(method, path, body, retried = false) {
     const headers = { Accept: 'application/json' };
     if (body !== undefined) headers['Content-Type'] = 'application/json';
-    const token = stored(TOKEN_KEY, sessionStorage);
+    // account requests carry the account's token; the rest the administrator's, when one was given
+    const accountRequest = path.startsWith('account');
+    const token = accountRequest ? null : stored(TOKEN_KEY, sessionStorage);
     if (token && method !== 'GET') headers['X-Admin-Token'] = token;
+    const signedIn = accountRequest ? session() : null;
+    if (signedIn) headers.Authorization = `Bearer ${signedIn.token}`;
 
     let response;
     try {
@@ -387,7 +404,7 @@ async function request(method, path, body, retried = false) {
     } catch {
         throw new ApiError(0, { detail: 'Sunucuya ulaşılamadı; bağlantınızı kontrol edin' });
     }
-    if (response.status === 401 && !retried) {
+    if (response.status === 401 && !retried && !accountRequest) {
         store(TOKEN_KEY, null, sessionStorage);
         updateAdminButton();
         if (askToken()) return request(method, path, body, true);
@@ -1078,11 +1095,219 @@ function favorites() {
     }
 }
 
+/** Keeps the saved places on this device and shows them; signed in, the account gets them too. */
 function storeFavorites(next) {
+    keepFavorites(next);
+    if (session()) {
+        store(PLACES_DIRTY_KEY, '1');
+        clearTimeout(pushTimer);
+        pushTimer = setTimeout(pushPlaces, 600);
+    }
+}
+
+function keepFavorites(next) {
     store(FAVORITES_KEY, JSON.stringify(next));
     renderShortcuts();
     renderFavorites();
     updateSaveButton();
+}
+
+/* ---------- accounts: the same places on every device ---------- */
+
+let accountMode = 'login';
+let pushTimer = null;
+
+/** The signed-in account, while its token is valid. */
+function session() {
+    try {
+        const current = JSON.parse(stored(SESSION_KEY) ?? 'null');
+        return current?.token && Date.parse(current.expiresAt) > Date.now() ? current : null;
+    } catch {
+        return null;
+    }
+}
+
+function updateAccountButton() {
+    const current = session();
+    const button = $('#account-button');
+    button.classList.toggle('unlocked', Boolean(current));
+    button.title = current ? `Hesap: ${current.name ?? current.email}`
+        : 'Giriş yapın: Ev, İş ve kayıtlı yerleriniz her cihazda';
+}
+
+function openAccount() {
+    const current = session();
+    $('#account-signed-out').hidden = Boolean(current);
+    $('#account-signed-in').hidden = !current;
+    $('#account-error').hidden = true;
+    resetDelete();
+    if (current) {
+        $('#account-name').textContent = current.name ?? 'Hesabınız';
+        $('#account-email').textContent = current.email;
+    } else {
+        setAccountMode(accountMode);
+    }
+    $('#account-dialog').showModal();
+}
+
+function setAccountMode(mode) {
+    accountMode = mode;
+    const register = mode === 'register';
+    $('#account-tab-login').setAttribute('aria-selected', String(!register));
+    $('#account-tab-register').setAttribute('aria-selected', String(register));
+    $('#account-name-field').hidden = !register;
+    $('#account-submit').textContent = register ? 'Hesap aç' : 'Giriş yap';
+    $('#account-form').elements.password.autocomplete = register ? 'new-password' : 'current-password';
+    $('#account-error').hidden = true;
+}
+
+async function submitAccount() {
+    const form = $('#account-form');
+    const error = $('#account-error');
+    const submit = $('#account-submit');
+    const register = accountMode === 'register';
+    const body = { email: form.elements.email.value.trim(), password: form.elements.password.value };
+    if (register) body.name = form.elements.name.value.trim() || null;
+    error.hidden = true;
+    submit.disabled = true;
+    try {
+        const started = await request('POST', register ? 'account/register' : 'account/login', body);
+        store(SESSION_KEY, JSON.stringify({
+            token: started.token,
+            expiresAt: started.expiresAt,
+            email: started.account.email,
+            name: started.account.name ?? null
+        }));
+        form.elements.password.value = '';
+        updateAccountButton();
+        await mergePlaces();
+        $('#account-dialog').close();
+        toast(register ? 'Hesabınız açıldı; kayıtlı yerleriniz artık her cihazda'
+            : `Hoş geldiniz${started.account.name ? `, ${started.account.name}` : ''}`);
+    } catch (problem) {
+        error.textContent = problem.message;
+        error.hidden = false;
+    } finally {
+        submit.disabled = false;
+    }
+}
+
+/**
+ * After signing in, what the account keeps and what this device kept come together: the account's home and
+ * workplace win, saved places from both are kept once.
+ */
+async function mergePlaces() {
+    const remote = accountPlaces(await api.get('account/places'));
+    const local = favorites();
+    const merged = { home: remote.home ?? local.home, work: remote.work ?? local.work, places: [...remote.places] };
+    for (const place of local.places) {
+        if (merged.places.length >= MAX_FAVORITES) break;
+        if (!merged.places.some((kept) => distanceMeters(kept, place) < SAME_PLACE_METERS)) merged.places.push(place);
+    }
+    keepFavorites(merged);
+    if (JSON.stringify(placesBody(merged)) !== JSON.stringify(placesBody(remote))) await pushPlaces();
+}
+
+/** On start: the account's places replace this device's copy, unless this device has changes the account missed. */
+async function refreshAccount() {
+    updateAccountButton();
+    if (!session()) return;
+    try {
+        if (stored(PLACES_DIRTY_KEY)) await pushPlaces();
+        else keepFavorites(accountPlaces(await api.get('account/places')));
+    } catch (error) {
+        if (error.status === 401) signOut({ keepPlaces: true, message: 'Oturumunuz sona erdi; yeniden giriş yapın' });
+    }
+}
+
+async function pushPlaces() {
+    if (!session()) return;
+    try {
+        await request('PUT', 'account/places', placesBody(favorites()));
+        store(PLACES_DIRTY_KEY, null);
+    } catch (error) {
+        if (error.status === 401) {
+            signOut({ keepPlaces: true, message: 'Oturumunuz sona erdi; yeniden giriş yapınca yerleriniz hesabınıza yazılır' });
+        } else {
+            toast('Kayıtlı yerler hesabınıza yazılamadı; bir sonraki açılışta yeniden denenecek', true);
+        }
+    }
+}
+
+/** The places as the server sends them: a missing home or workplace is none. */
+function accountPlaces(remote) {
+    return { home: remote?.home ?? null, work: remote?.work ?? null, places: remote?.places ?? [] };
+}
+
+/** The places as the server takes them. */
+function placesBody(saved) {
+    const one = (place) => (place ? {
+        label: String(place.label).slice(0, 200),
+        detail: place.detail ? String(place.detail).slice(0, 200) : null,
+        lat: place.lat,
+        lon: place.lon
+    } : null);
+    return { home: one(saved.home), work: one(saved.work), places: saved.places.slice(0, MAX_FAVORITES).map(one) };
+}
+
+/**
+ * Signs out on this device. The account's places leave the device with it, so that the next person using it does
+ * not see someone's home; when they could not be saved to the account, they stay.
+ */
+function signOut({ keepPlaces = false, message = 'Çıkış yapıldı; kayıtlı yerleriniz hesabınızda duruyor' } = {}) {
+    clearTimeout(pushTimer);
+    store(SESSION_KEY, null);
+    store(PLACES_DIRTY_KEY, null);
+    if (!keepPlaces) keepFavorites({ home: null, work: null, places: [] });
+    updateAccountButton();
+    toast(message);
+}
+
+/** Deleting an account takes a second tap, without a browser dialog. */
+async function deleteAccount() {
+    const button = $('#account-delete');
+    if (button.dataset.confirm !== 'yes') {
+        button.dataset.confirm = 'yes';
+        button.textContent = 'Emin misiniz? Silmek için tekrar dokunun';
+        return;
+    }
+    try {
+        await request('DELETE', 'account');
+        $('#account-dialog').close();
+        signOut({ message: 'Hesabınız ve kayıtlı yerleriniz silindi' });
+    } catch (error) {
+        toast(error.message, true);
+    }
+}
+
+function resetDelete() {
+    const button = $('#account-delete');
+    delete button.dataset.confirm;
+    button.textContent = 'Hesabı sil';
+}
+
+/**
+ * The map's details, waiting for the server while it wakes up: free hosting puts it to sleep when nobody uses it,
+ * and the first request then takes about a minute.
+ */
+async function waitForServer() {
+    const started = Date.now();
+    let warned = false;
+    for (;;) {
+        try {
+            const area = await api.get('map');
+            if (warned) toast('Sunucu hazır');
+            return area;
+        } catch (error) {
+            if (!WAKING_STATUSES.includes(error.status) || Date.now() - started > WAKE_TIMEOUT_MS) throw error;
+            if (!warned) {
+                toast('Sunucu uyanıyor: ücretsiz sunucu bir süre kullanılmayınca uyur, açılması birkaç dakika '
+                    + 'sürebilir…', false, WAKE_TIMEOUT_MS);
+                warned = true;
+            }
+            await new Promise((resolve) => setTimeout(resolve, 4000));
+        }
+    }
 }
 
 /** What a stop is saved as: its name, with the street of a point picked on the map looked up first. */
@@ -2928,6 +3153,21 @@ function wireUp() {
     $('#incident-dialog').addEventListener('close', () => {
         if ($('#incident-dialog').returnValue === 'report') submitIncident();
     });
+    $('#account-button').addEventListener('click', openAccount);
+    $('#account-tab-login').addEventListener('click', () => setAccountMode('login'));
+    $('#account-tab-register').addEventListener('click', () => setAccountMode('register'));
+    $('#account-form').addEventListener('submit', (event) => {
+        event.preventDefault();
+        submitAccount();
+    });
+    $('#account-signout').addEventListener('click', () => {
+        $('#account-dialog').close();
+        signOut();
+    });
+    $('#account-delete').addEventListener('click', deleteAccount);
+    for (const button of document.querySelectorAll('#account-dialog [data-close]')) {
+        button.addEventListener('click', () => $('#account-dialog').close());
+    }
     $('#admin-button').addEventListener('click', () => {
         if (stored(TOKEN_KEY, sessionStorage)) {
             store(TOKEN_KEY, null, sessionStorage);
@@ -2968,10 +3208,11 @@ async function init() {
     if (!fromHash.from && !fromHash.to && stored(INTRO_KEY) !== 'seen') showIntro();
     selectMode(state.mode);
     try {
-        showArea(await api.get('map'));
+        showArea(await waitForServer());
     } catch (error) {
         toast(error.message, true);
     }
+    refreshAccount();
     await loadIncidents();
     loadTrafficStatus();
     refreshTraffic();
