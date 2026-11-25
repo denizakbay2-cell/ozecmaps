@@ -403,6 +403,21 @@
     </form>
 </dialog>
 
+<dialog id="install-dialog" class="dialog" aria-labelledby="install-title">
+    <div class="account-section">
+        <h2 id="install-title">Uygulama olarak ekle</h2>
+        <p id="install-intro" class="muted small"></p>
+        <ol id="install-steps" class="install-steps"></ol>
+        <p id="install-note" class="intro-note" hidden></p>
+        <div class="dialog-actions">
+            <button id="install-copy" class="button" type="button" hidden>
+                <span data-icon="link"></span>Bağlantıyı kopyala
+            </button>
+            <button class="button primary" type="button" data-close-install>Tamam</button>
+        </div>
+    </div>
+</dialog>
+
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
 </body>
 </html>

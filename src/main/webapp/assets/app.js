@@ -31,6 +31,8 @@ const SESSION_KEY = 'city-navigator.session';
 const PLACES_DIRTY_KEY = 'city-navigator.places-dirty';
 /** Answers that mean the server is unreachable or still waking up (free hosting sleeps when nobody uses it). */
 const WAKING_STATUSES = [0, 502, 503, 504];
+/** During start-up a 500 may mean the database is still waking too; it is retried a few times there only. */
+const STARTUP_RETRY_STATUSES = [0, 500, 502, 503, 504];
 /** How long to wait for a sleeping server to wake up (ms): a free server with a sliver of a processor is slow. */
 const WAKE_TIMEOUT_MS = 300000;
 /** Distance from the route (m) that counts as having left it, per mode. */
@@ -221,6 +223,8 @@ const ICONS = {
     share: [['path', { d: 'M12 15V3.5M7.5 8 12 3.5 16.5 8M5 12.5V20h14v-7.5' }]],
     plus: [['path', { d: 'M12 5v14M5 12h14' }]],
     bolt: [['path', { d: 'M13 3 5 14h6l-1 7 8-11h-6Z' }]],
+    link: [['path', { d: 'M9 15 15 9M10.5 6.5 13 4a4 4 0 0 1 6 6l-2.5 2.5M13.5 17.5 11 20a4 4 0 0 1-6-6l2.5-2.5' }]],
+    share2: [['path', { d: 'M12 15V3.5M8 7l4-4 4 4M5 12v7a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-7' }]],
     bus: [['path', { d: 'M6 17V6a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v11ZM6 11h12M8 20v-3M16 20v-3' }]],
     star: [['path', { d: 'M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9Z' }]],
     home: [['path', { d: 'M4 11.5 12 4.5l8 7V20h-5.5v-5.5h-5V20H4Z' }]],
@@ -1299,7 +1303,7 @@ async function waitForServer() {
             if (warned) toast('Sunucu hazır');
             return area;
         } catch (error) {
-            if (!WAKING_STATUSES.includes(error.status) || Date.now() - started > WAKE_TIMEOUT_MS) throw error;
+            if (!STARTUP_RETRY_STATUSES.includes(error.status) || Date.now() - started > WAKE_TIMEOUT_MS) throw error;
             if (!warned) {
                 toast('Sunucu uyanıyor: ücretsiz sunucu bir süre kullanılmayınca uyur, açılması birkaç dakika '
                     + 'sürebilir…', false, WAKE_TIMEOUT_MS);
@@ -2983,24 +2987,33 @@ function hideIntro() {
 
 let installPrompt = null;
 
+/** Already added to the home screen and opened from there. */
+const isStandalone = () => window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+/** An iPhone or iPad (including iPadOS, which reports a desktop platform but has touch). */
+const isApple = () => /iphone|ipad|ipod/i.test(navigator.userAgent)
+    || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+/** On iOS, only Safari can add an app to the home screen; other browsers (Chrome, Firefox, Edge) cannot. */
+const isIosSafari = () => isApple() && !/crios|fxios|edgios|opios/i.test(navigator.userAgent);
+
 function setUpInstall() {
     window.addEventListener('beforeinstallprompt', (event) => {
-        // the browser's own banner is replaced by the buttons in the header and on the welcome screen
+        // keep the event; the header and welcome-screen buttons trigger it instead of the browser's own banner
         event.preventDefault();
         installPrompt = event;
-        $('#install-button').hidden = false;
-        $('#intro-install').hidden = false;
+        showInstallAffordances(true);
     });
     window.addEventListener('appinstalled', () => {
         installPrompt = null;
-        $('#install-button').hidden = true;
-        $('#intro-install').hidden = true;
+        showInstallAffordances(false);
         toast('ozecmaps ana ekranınıza eklendi');
     });
-    const standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
-    const apple = /iphone|ipad|ipod/i.test(navigator.userAgent)
-        || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-    $('#intro-ios').hidden = !(apple && !standalone);
+    // on iOS no beforeinstallprompt is ever fired, so offer the buttons there from the start (they open instructions)
+    showInstallAffordances(!isStandalone() && isApple());
+    $('#intro-ios').hidden = true;
+    for (const button of document.querySelectorAll('#install-dialog [data-close-install]')) {
+        button.addEventListener('click', () => $('#install-dialog').close());
+    }
+    $('#install-copy').addEventListener('click', copyLink);
     if ('serviceWorker' in navigator && window.isSecureContext) {
         navigator.serviceWorker.register('sw.js').catch(() => {
             // without the offline cache the site still works online
@@ -3008,13 +3021,66 @@ function setUpInstall() {
     }
 }
 
+function showInstallAffordances(show) {
+    $('#install-button').hidden = !show;
+    $('#intro-install').hidden = !show;
+}
+
 async function installApp() {
-    if (!installPrompt) return;
-    installPrompt.prompt();
-    await installPrompt.userChoice.catch(() => null);
-    installPrompt = null;
-    $('#install-button').hidden = true;
-    $('#intro-install').hidden = true;
+    if (installPrompt) {
+        installPrompt.prompt();
+        const choice = await installPrompt.userChoice.catch(() => null);
+        if (choice?.outcome === 'accepted') showInstallAffordances(false);
+        installPrompt = null;
+        return;
+    }
+    if (isApple()) {
+        openInstallHelp();
+        return;
+    }
+    // other browsers without a prompt (e.g. desktop Firefox): point to the browser menu
+    openInstallHelp();
+}
+
+/** Shows how to add the app to the home screen, worded for the device and browser in use. */
+function openInstallHelp() {
+    const steps = $('#install-steps');
+    const note = $('#install-note');
+    const copy = $('#install-copy');
+    note.hidden = true;
+    copy.hidden = true;
+    if (isApple() && isIosSafari()) {
+        $('#install-intro').textContent = "ozecmaps'i iPhone/iPad ana ekranınıza uygulama gibi ekleyin:";
+        steps.replaceChildren(
+            el('li', {}, 'Aşağıdaki araç çubuğunda ', el('strong', {}, 'Paylaş'), ' düğmesine dokunun (yukarı ok).'),
+            el('li', {}, el('strong', {}, 'Ana Ekrana Ekle'), "'yi seçin."),
+            el('li', {}, 'Sağ üstte ', el('strong', {}, 'Ekle'), "'ye dokunun."));
+    } else if (isApple()) {
+        $('#install-intro').textContent = 'iPhone ve iPad’de uygulama olarak eklemek yalnızca Safari ile olur '
+            + '(şu an başka bir tarayıcıdasınız):';
+        steps.replaceChildren(
+            el('li', {}, 'Bu bağlantıyı kopyalayın ve ', el('strong', {}, 'Safari'), "'de açın."),
+            el('li', {}, 'Safari’de ', el('strong', {}, 'Paylaş'), ' → ', el('strong', {}, 'Ana Ekrana Ekle'),
+                "'yi seçin."));
+        copy.hidden = false;
+    } else {
+        $('#install-intro').textContent = 'Tarayıcı menüsünden uygulama olarak ekleyebilirsiniz:';
+        steps.replaceChildren(
+            el('li', {}, 'Tarayıcının ', el('strong', {}, 'menüsünü'), ' açın (⋮ ya da paylaş).'),
+            el('li', {}, el('strong', {}, 'Uygulamayı yükle'), ' ya da ', el('strong', {}, 'Ana ekrana ekle'),
+                "'yi seçin."));
+    }
+    $('#install-dialog').showModal();
+}
+
+async function copyLink() {
+    const url = location.origin + location.pathname;
+    try {
+        await navigator.clipboard.writeText(url);
+        toast('Bağlantı kopyalandı; Safari’de açıp yapıştırın');
+    } catch {
+        window.prompt('Bu bağlantıyı kopyalayıp Safari’de açın:', url);
+    }
 }
 
 /* ---------- the bottom sheet on phones ---------- */
