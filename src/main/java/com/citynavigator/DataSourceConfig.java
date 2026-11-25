@@ -1,23 +1,15 @@
 package com.citynavigator;
 
-import jakarta.annotation.sql.DataSourceDefinition;
-import jakarta.enterprise.context.ApplicationScoped;
-
 /**
- * The PostgreSQL connection pool. Payara replaces the {@code ${ENV=...}} placeholders with environment variables
- * at deploy time, so connection details and the password never appear in the code or the WAR.
+ * The JNDI name of the PostgreSQL connection pool. The pool itself is defined in
+ * {@code src/main/webapp/WEB-INF/glassfish-resources.xml} (rather than with a {@code @DataSourceDefinition}) so that it
+ * can validate its connections and recover when the free database suspends its compute; connection details and the
+ * password come from the environment, so they never appear in the code or the WAR.
  */
-@DataSourceDefinition(
-        name = DataSourceConfig.JNDI_NAME,
-        className = "org.postgresql.ds.PGSimpleDataSource",
-        url = "${ENV=DB_URL}",
-        user = "${ENV=DB_USER}",
-        password = "${ENV=DB_PASSWORD}",
-        minPoolSize = 1,
-        maxPoolSize = 8,
-        properties = {"reWriteBatchedInserts=true", "ApplicationName=city-navigator"})
-@ApplicationScoped
-public class DataSourceConfig {
+public final class DataSourceConfig {
 
     public static final String JNDI_NAME = "java:app/jdbc/cityNavigator";
+
+    private DataSourceConfig() {
+    }
 }

@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE resources PUBLIC "-//Payara.fish//DTD Payara Server 4 Resource Definitions//EN"
+        "https://docs.payara.fish/schemas/payara-resources_1_6.dtd">
+<!--
+  The PostgreSQL connection pool, defined here instead of with a @DataSourceDefinition so that it can validate its
+  connections. The free database (Neon) suspends its compute after a few minutes of inactivity; without validation the
+  pool keeps handing out the connections that break when that happens, and every query then fails with a 500 until the
+  server restarts. With validation the pool tests a connection before use, drops the whole set when one is broken, and
+  opens fresh ones (which wake the database), so the first request after a suspend is a little slower but succeeds.
+  Connection details and the password come from the environment (${ENV=...}), so they never appear in the code or WAR.
+-->
+<resources>
+    <jdbc-connection-pool name="cityNavigatorPool"
+            datasource-classname="org.postgresql.ds.PGSimpleDataSource"
+            res-type="javax.sql.DataSource"
+            is-connection-validation-required="true"
+            connection-validation-method="custom-validation"
+            validation-classname="org.glassfish.api.jdbc.validation.PostgresConnectionValidation"
+            fail-all-connections="true"
+            validate-atmost-once-period-in-seconds="10"
+            steady-pool-size="1"
+            max-pool-size="8"
+            pool-resize-quantity="1"
+            idle-timeout-in-seconds="120"
+            connection-creation-retry-attempts="4"
+            connection-creation-retry-interval-in-seconds="4">
+        <property name="URL" value="${ENV=DB_URL}"/>
+        <property name="User" value="${ENV=DB_USER}"/>
+        <property name="Password" value="${ENV=DB_PASSWORD}"/>
+        <property name="reWriteBatchedInserts" value="true"/>
+        <property name="ApplicationName" value="city-navigator"/>
+        <property name="socketTimeout" value="30"/>
+        <property name="tcpKeepAlive" value="true"/>
+    </jdbc-connection-pool>
+    <jdbc-resource pool-name="cityNavigatorPool" jndi-name="java:app/jdbc/cityNavigator"/>
+</resources>
