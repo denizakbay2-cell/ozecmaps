@@ -129,6 +129,8 @@ const CATEGORY_ICONS = {
     SHOP: 'bag', MONEY: 'money', SERVICE: 'wrench', WORSHIP: 'landmark', HOTEL: 'bed', FUEL: 'fuel'
 };
 const phoneLayout = window.matchMedia('(max-width: 720px)');
+// moves the phone bottom sheet between its snap heights; set up in setUpSheet()
+let setSheet = () => {};
 const darkScheme = window.matchMedia('(prefers-color-scheme: dark)');
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -878,6 +880,13 @@ function attachSearch(input, which) {
     input.addEventListener('keydown', (event) => onSearchKey(event, which));
     input.addEventListener('focus', () => {
         input.select();
+        // on a phone the sheet opens fully and the fields go to the top, so the
+        // suggestions are visible above the keyboard
+        if (phoneLayout.matches) {
+            $('#panel').classList.add('searching');
+            setSheet('full');
+            $('#panel').scrollTo({ top: 0 });
+        }
         const recent = recentPlaces();
         if (!input.value.trim() && recent.length) {
             const near = here.position ?? { lat: map.getCenter().lat, lon: map.getCenter().lng };
@@ -885,7 +894,10 @@ function attachSearch(input, which) {
                 'Son aramalar', near);
         }
     });
-    input.addEventListener('blur', () => setTimeout(hideSuggestions, 150));
+    input.addEventListener('blur', () => setTimeout(() => {
+        hideSuggestions();
+        endSearching();
+    }, 150));
 }
 
 async function findPlaces(input, which) {
@@ -990,6 +1002,14 @@ function hideSuggestions() {
     search.active = -1;
     search.markers = [];
     layers.preview?.clearLayers();
+}
+
+/** Leaves the phone "searching" layout, unless the focus just moved to the other field. */
+function endSearching() {
+    const active = document.activeElement;
+    if (active === $('#from-input') || active === $('#to-input')) return;
+    $('#panel').classList.remove('searching');
+    if (phoneLayout.matches) setSheet(state.route ? 'half' : 'peek');
 }
 
 function onSearchKey(event, which) {
@@ -1722,7 +1742,9 @@ function showRoute(route, { scroll = true } = {}) {
     $('#route-stats').textContent = routeStats(route);
     searchAlong();
     if (scroll && phoneLayout.matches && !state.nav) {
-        // on a phone the sheet scrolls to the summary and the start button
+        // on a phone the sheet opens to half height and scrolls to the summary and start button
+        $('#panel').classList.remove('searching');
+        setSheet('half');
         const panel = $('#panel');
         panel.scrollTo({ top: $('#result').offsetTop - 12, behavior: reducedMotion.matches ? 'auto' : 'smooth' });
     }
@@ -3085,24 +3107,44 @@ async function copyLink() {
 
 /* ---------- the bottom sheet on phones ---------- */
 
+/* The sheet snaps between three heights: a compact "peek" that leaves the map
+ * visible, a "half" that shows the route or the saved places, and "full". */
+const SHEET_SNAPS = ['peek', 'half', 'full'];
+
 function setUpSheet() {
     const panel = $('#panel');
     const handle = $('#sheet-handle');
-    const setExpanded = (expanded) => {
-        panel.classList.toggle('expanded', expanded);
-        handle.setAttribute('aria-expanded', String(expanded));
-        handle.setAttribute('aria-label', expanded ? 'Paneli küçült' : 'Paneli büyüt');
+    let snap = 'peek';
+    const apply = () => {
+        panel.classList.toggle('half', snap === 'half');
+        panel.classList.toggle('expanded', snap === 'full');
+        handle.setAttribute('aria-expanded', String(snap !== 'peek'));
+        handle.setAttribute('aria-label', snap === 'full' ? 'Paneli küçült' : 'Paneli büyüt');
+    };
+    // used from the search and routing code to move the sheet to a sensible height
+    setSheet = (name) => {
+        if (SHEET_SNAPS.includes(name) && name !== snap) {
+            snap = name;
+            apply();
+        }
+    };
+    const step = (direction) => {
+        const next = Math.min(SHEET_SNAPS.length - 1, Math.max(0, SHEET_SNAPS.indexOf(snap) + direction));
+        setSheet(SHEET_SNAPS[next]);
     };
     let startY = null;
     handle.addEventListener('pointerdown', (event) => {
         startY = event.clientY;
+        handle.setPointerCapture?.(event.pointerId);
     });
     handle.addEventListener('pointerup', (event) => {
-        const moved = startY === null ? 0 : event.clientY - startY;
+        if (startY === null) return;
+        const moved = event.clientY - startY;
         startY = null;
-        if (moved < -24) setExpanded(true);
-        else if (moved > 24) setExpanded(false);
-        else setExpanded(!panel.classList.contains('expanded'));
+        if (moved < -24) step(1);                    // dragged up: taller
+        else if (moved > 24) step(-1);               // dragged down: shorter
+        else if (snap === 'full') setSheet('peek');  // a tap cycles back to the map
+        else step(1);
     });
     // the map controls and fitted routes stay clear of the sheet
     const follow = () => {

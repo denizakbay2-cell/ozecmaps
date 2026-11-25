@@ -2671,7 +2671,8 @@ svg.icon {
         right: 0;
         bottom: 0;
         width: auto;
-        max-height: 50vh;
+        /* "peek": only the search planner shows, so most of the map stays visible */
+        max-height: 85vh;
         gap: 14px;
         padding: 6px 16px max(16px, env(safe-area-inset-bottom));
         border-radius: var(--radius-xl) var(--radius-xl) 0 0;
@@ -2679,8 +2680,47 @@ svg.icon {
         transition: max-height 0.3s var(--ease);
     }
 
+    /* in the peek state the quick destinations, recent searches, road status and
+       footer wait above the fold; dragging the handle up reveals them */
+    .panel:not(.half):not(.expanded):not(.searching) #home,
+    .panel:not(.half):not(.expanded):not(.searching) .incidents,
+    .panel:not(.half):not(.expanded):not(.searching) .panel-foot {
+        display: none;
+    }
+
+    .panel.half {
+        max-height: 58vh;
+    }
+
     .panel.expanded {
         max-height: calc(100% - 72px);
+    }
+
+    /* while a search box is focused the sheet opens fully and clears everything
+       but the fields, so the suggestions own the sheet and sit above the keyboard */
+    .panel.searching {
+        max-height: calc(100% - 72px);
+    }
+
+    .panel.searching #home,
+    .panel.searching #result,
+    .panel.searching .incidents,
+    .panel.searching .panel-foot,
+    .panel.searching .add-stop,
+    .panel.searching .modes,
+    .panel.searching .options {
+        display: none;
+    }
+
+    .panel.searching .suggestions {
+        position: static;
+        grid-column: 1 / -1;
+        max-height: none;
+        margin: 10px -6px 0;
+        padding-inline: 0;
+        border: 0;
+        border-radius: 0;
+        box-shadow: none;
     }
 
     .sheet-handle {
